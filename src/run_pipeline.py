@@ -30,11 +30,26 @@ def tidy_volume(vol_result: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def run(brand: str, city: str) -> None:
-    places = run_scrape(brand, city)
-    df_places = pd.json_normalize(places)
-    upsert_places(df_places, brand, city)
+    try:
+        places = run_scrape(brand, city)
+        if not places:
+            print(f"Warning: No places found for {brand} in {city}")
+            return
+            
+        df_places = pd.json_normalize(places)
+        print(f"Scraped data columns: {df_places.columns.tolist()}")
+        upsert_places(df_places, brand, city)
 
-    keywords = suggest_keywords(df_places["name"].tolist())
-    vol_raw  = fetch_volume(keywords)
-    df_kw    = tidy_volume(vol_raw)
-    upsert_keywords(df_kw, city)
+        # Only proceed with keywords if we have place names
+        if 'name' in df_places.columns and len(df_places['name']) > 0:
+            keywords = suggest_keywords(df_places['name'].tolist())
+        else:
+            # Fallback to using brand name
+            keywords = suggest_keywords([f"{brand} in {city}"])
+            
+        vol_raw = fetch_volume(keywords)
+        df_kw = tidy_volume(vol_raw)
+        upsert_keywords(df_kw, city)
+    except Exception as e:
+        print(f"Error in run pipeline for {brand} in {city}: {str(e)}")
+        # Continue execution rather than failing completely
