@@ -22,7 +22,7 @@ embedding = OpenAIEmbeddings(
 
 # -- 3.  Attach to existing index & namespaces -------------------------
 places_vs = PineconeVectorStore.from_existing_index(
-    index_name=INDEX_NAME,
+    index_name="zecompete",
     embedding=embedding,
     namespace="maps"
 )
