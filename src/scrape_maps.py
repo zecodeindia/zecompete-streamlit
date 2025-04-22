@@ -4,7 +4,7 @@ from src.config import secret
 
 APIFY_TOKEN = secret("APIFY_TOKEN")
 # Update this to your actual Apify task ID
-TASK_ID = "avadhut.sawant~google-maps-scraper-task"  # Or your new task ID
+TASK_ID = "zecodemedia~google-maps-scraper-task"  # Or your new task ID
 
 def run_scrape(brand: str, city: str) -> List[Dict]:
     """Run the Google‑Maps actor Task and return list of place dicts."""
