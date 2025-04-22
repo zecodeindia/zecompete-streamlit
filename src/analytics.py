@@ -25,10 +25,23 @@ if INDEX_NAME not in pinecone.list_indexes():
             pod_type="starter"   # compliant with free tier
         )
     except pinecone.core.client.exceptions.ApiException as e:
-        # log the error; fall back to assuming index exists
+        # --- robust error logging: handles bytes, str, or None ----------
         import logging, json
-        logging.error("Pinecone create_index failed: %s",
-                      json.loads(e.body or "{}").get("message", e))
+        body_text = ""
+        if e.body:                         # body can be None
+            body_text = (
+                e.body.decode()            # bytes  -> str
+                if isinstance(e.body, (bytes, bytearray))
+                else str(e.body)           # already str → keep
+            )
+
+        # try to parse JSON, fall back to plain text
+        try:
+            msg = json.loads(body_text)["message"]
+        except Exception:
+            msg = body_text or str(e)
+
+        logging.error("Pinecone create_index failed: %s", msg)
 
 # -- 3.  one embedding object (re‑used) --------------------------------
 embedding = OpenAIEmbeddings(
