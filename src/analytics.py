@@ -1,5 +1,5 @@
 from langchain_pinecone import PineconeVectorStore
-from langchain_openai import ChatOpenAI
+from langchain_openai    import ChatOpenAI
 from src.config import secret
 import pinecone
 

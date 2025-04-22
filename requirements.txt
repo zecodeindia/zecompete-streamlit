@@ -3,5 +3,8 @@ pandas
 requests
 openai
 pinecone-client==2.2.2     # last stable v2 release
-langchain
+langchain-core==0.2.*
+langchain-community==0.2.*     # tools like SelfQueryRetriever
+langchain-openai==0.2.*
+langchain-pinecone==0.2.*
 python-dotenv
