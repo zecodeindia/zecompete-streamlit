@@ -1,10 +1,10 @@
-import requests, json, time, os
+import requests, json, time
 from typing import List, Dict
 from src.config import secret
 
 APIFY_TOKEN = secret("APIFY_TOKEN")
-# Make sure this is your correct task ID
-TASK_ID = "zecodemedia~google-maps-scraper-task"  # Replace with your actual task ID
+# Update this to your actual Apify task ID
+TASK_ID = "avadhut.sawant~google-maps-scraper-task"  # Or your new task ID
 
 def run_scrape(brand: str, city: str) -> List[Dict]:
     """Run the Google‑Maps actor Task and return list of place dicts."""
@@ -33,25 +33,11 @@ def run_scrape(brand: str, city: str) -> List[Dict]:
             data = resp.json()
             print(f"Apify request successful, received {len(data) if isinstance(data, list) else 'non-list'} items")
             
-            # Print the type of data received
-            print(f"Data type: {type(data)}")
-            
             # Save a sample of the response for debugging
             if isinstance(data, list) and data:
-                print(f"First item sample: {json.dumps(data[0])[0:200]}...")
-                
-                # Check for expected fields
                 first_item = data[0]
                 print(f"Available fields in first item: {list(first_item.keys())}")
-                
-                # Save full response to a file for inspection
-                debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
-                os.makedirs(debug_dir, exist_ok=True)
-                debug_file = os.path.join(debug_dir, f'apify_response_{brand}_{city}.json')
-                with open(debug_file, 'w') as f:
-                    json.dump(data, f, indent=2)
-                print(f"Full response saved to {debug_file}")
-                
+                print(f"First item sample: {json.dumps(first_item)[0:300]}...")
                 return data
             else:
                 print(f"Unexpected data format: {data}")
