@@ -1,35 +1,48 @@
+# analytics.py  – vector‑powered Q&A layer
 from langchain.vectorstores import Pinecone as PineconeVectorStore
 from langchain.chat_models  import ChatOpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from src.config import secret
 import pinecone
 
-# -- 1.  initialise Pinecone SDK v2 -----------------------------------
+# -- 1.  init Pinecone SDK v2 -----------------------------------------
 pinecone.init(
     api_key=secret("PINECONE_API_KEY"),
     environment=secret("PINECONE_ENV")
 )
 
-# -- 2.  create ONE embedding object ----------------------------------
+INDEX_NAME = "zecompete"
+DIM        = 1536                      # openai text-embedding-3-small
+METRIC     = "cosine"
+
+# -- 2.  auto‑create index on first boot -------------------------------
+if INDEX_NAME not in pinecone.list_indexes():
+    pinecone.create_index(
+        name=INDEX_NAME,
+        dimension=DIM,
+        metric=METRIC
+    )
+
+# -- 3.  one embedding object (re‑used) --------------------------------
 embedding = OpenAIEmbeddings(
     model="text-embedding-3-small",
     openai_api_key=secret("OPENAI_API_KEY")
 )
 
-# -- 3.  attach to the existing index, per namespace ------------------
+# -- 4.  bind namespaces to that index ---------------------------------
 places_vs = PineconeVectorStore.from_existing_index(
-    index_name="zecompete",
+    index_name=INDEX_NAME,
     embedding=embedding,
-    namespace="maps"          # ← your store for place docs
+    namespace="maps"
 )
 
 kw_vs = PineconeVectorStore.from_existing_index(
-    index_name="zecompete",
+    index_name=INDEX_NAME,
     embedding=embedding,
-    namespace="keywords"      # ← your keyword-volume docs
+    namespace="keywords"
 )
 
-# -- 4.  LLM for reasoning -------------------------------------------
+# -- 5.  LLM for reasoning --------------------------------------------
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.2,
@@ -39,8 +52,7 @@ llm = ChatOpenAI(
 from langchain.chains import create_retrieval_chain
 
 def insight_question(question: str) -> str:
-    """Ask a natural‑language question; get an answer grounded in
-    Pinecone‑stored place vectors."""
+    """Return a narrative answer grounded in Pinecone‑stored data."""
     chain = create_retrieval_chain(
         retriever=places_vs.as_retriever(k=8),
         llm=llm,
