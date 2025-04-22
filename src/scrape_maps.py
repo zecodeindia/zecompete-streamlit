@@ -3,7 +3,7 @@ from typing import List, Dict
 from src.config import secret
 
 APIFY_TOKEN = secret("APIFY_TOKEN")
-TASK_ID     = "your-username~google-maps-task"   # <- replace with your Task
+TASK_ID     = "avadhut.sawant~google-maps-scraper-task"   # <- replace with your Task
 
 def run_scrape(brand: str, city: str) -> List[Dict]:
     """Run the Google‑Maps actor Task and return list of place dicts."""
