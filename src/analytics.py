@@ -17,11 +17,18 @@ METRIC     = "cosine"
 
 # -- 2.  auto‑create index on first boot -------------------------------
 if INDEX_NAME not in pinecone.list_indexes():
-    pinecone.create_index(
-        name=INDEX_NAME,
-        dimension=DIM,
-        metric=METRIC
-    )
+    try:
+        pinecone.create_index(
+            name=INDEX_NAME,
+            dimension=1536,
+            metric="cosine",
+            pod_type="starter"   # compliant with free tier
+        )
+    except pinecone.core.client.exceptions.ApiException as e:
+        # log the error; fall back to assuming index exists
+        import logging, json
+        logging.error("Pinecone create_index failed: %s",
+                      json.loads(e.body or "{}").get("message", e))
 
 # -- 3.  one embedding object (re‑used) --------------------------------
 embedding = OpenAIEmbeddings(
