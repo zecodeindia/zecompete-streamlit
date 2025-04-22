@@ -1,11 +1,11 @@
-# src/analytics.py
+# src/analytics.py - Fixed version
 from pinecone import Pinecone
 from src.config import secret
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 # Initialize Pinecone
 pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
@@ -16,10 +16,7 @@ embedding = OpenAIEmbeddings(
     openai_api_key=secret("OPENAI_API_KEY")
 )
 
-# Bind to the existing index & namespaces
-INDEX_NAME = "zecompete"
-
-# Initialize the LLM
+# LLM setup
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.2,
@@ -28,46 +25,48 @@ llm = ChatOpenAI(
 
 def insight_question(question: str) -> str:
     """
-    Ask a question grounded in your Pinecone data,
-    backed by LangChain Retrieval-QA.
+    Ask a question grounded in your Pinecone data.
+    Uses updated LangChain patterns for better reliability.
     """
     try:
         # Determine which namespace to query based on the question
         namespace = "keywords" if any(kw in question.lower() for kw in 
-                                     ["keyword", "search", "volume", "trend"]) else "maps"
+                                    ["keyword", "search", "volume", "trend"]) else "maps"
         
         # Create vector store with appropriate namespace
         vector_store = PineconeVectorStore.from_existing_index(
-            index_name=INDEX_NAME,
+            index_name="zecompete",
             embedding=embedding,
             namespace=namespace
         )
         
         # Create the retriever
-        retriever = vector_store.as_retriever(search_kwargs={"k": 8})
+        retriever = vector_store.as_retriever(search_kwargs={"k": 5})
         
-        # Create a custom prompt for better results
-        prompt = ChatPromptTemplate.from_template(
-            """Answer the following question based on the provided context. 
-            If the answer is not in the context, say that you don't have that information.
-            
-            Context: {context}
-            
-            Question: {input}
-            
-            Answer:"""
+        # Define prompt template
+        template = """Answer the following question based on the provided context.
+        If the information is not in the context, say you don't have enough information.
+        
+        Context: {context}
+        
+        Question: {question}
+        
+        Answer: """
+        
+        prompt = ChatPromptTemplate.from_template(template)
+        
+        # Create the RAG chain using the LCEL (LangChain Expression Language) pattern
+        # This is the updated way to create chains in LangChain
+        chain = (
+            {"context": retriever, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
         )
         
-        # Create the document chain
-        document_chain = create_stuff_documents_chain(llm, prompt)
-        
-        # Create the retrieval chain
-        chain = create_retrieval_chain(retriever, document_chain)
-        
         # Execute the chain
-        response = chain.invoke({"input": question})
-        return response["answer"]
+        return chain.invoke(question)
     
     except Exception as e:
-        # Provide a meaningful error message
-        return f"I encountered an error while trying to answer your question: {str(e)}. Please try a different question or check if there's data in the index."
+        # Return a helpful error message
+        return f"Sorry, I encountered an error: {str(e)}. Please check if there's data in the index or try a different question."
