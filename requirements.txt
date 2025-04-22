@@ -2,6 +2,6 @@ streamlit==1.34.0
 pandas
 requests
 openai
-pinecone-client==3.*   # 3.x is the current SDK
+pinecone-client==2.2.2     # last stable v2 release
 langchain
 python-dotenv
