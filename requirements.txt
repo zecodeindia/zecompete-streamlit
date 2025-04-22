@@ -1,15 +1,16 @@
 streamlit==1.34.0
 
-# LangChain 0.2 split packages
+# LangChain packages
 langchain-core==0.2.*
 langchain-community==0.2.*
 langchain-openai==0.2.*
 langchain-pinecone==0.2.*
 
-# Pinecone v3 client
-pinecone-client>=3,<4
+# Pinecone v3 client
+pinecone>=3.0.0,<4.0.0
 
- openai
- pandas
- requests
- python-dotenv
+# Other dependencies
+openai>=1.0.0
+pandas
+requests
+python-dotenv
