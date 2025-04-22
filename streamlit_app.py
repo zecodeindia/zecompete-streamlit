@@ -145,10 +145,18 @@ if st.button("Run analysis", key="run_analysis_button"):
     log_container = st.container()
     log_container.subheader("Processing Logs")
     
+    # Add this warning
+    st.info("Note: If Google Maps data can't be accessed via Apify, the app will create sample data to demonstrate functionality.")
+    
     for b, c in itertools.product(
             map(str.strip, brands.split(",")),
             map(str.strip, cities.split(","))):
-        run_analysis(b, c, log_container)
+        log_container.write(f"Processing {b} in {c}...")
+        try:
+            run(b, c)
+            log_container.write(f"✅ Completed processing {b} in {c}")
+        except Exception as e:
+            log_container.error(f"❌ Error processing {b} in {c}: {str(e)}")
     
     st.success("Data ready!")
 
