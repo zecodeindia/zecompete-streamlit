@@ -1,7 +1,8 @@
+# Update streamlit_app.py
 import os, itertools, pandas as pd, streamlit as st
 from src.run_pipeline import run
 from src.analytics    import insight_question
-import pinecone
+from pinecone import Pinecone  # Updated import
 
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
 st.title("🗺️  Competitor Location & Demand Explorer")
@@ -16,8 +17,9 @@ if st.button("Run analysis"):
         run(b, c)
     st.success("Data ready!")
 
-pinecone.init(api_key=st.secrets["PINECONE_API_KEY"])
-idx = pinecone.Index("zecompete")
+# Updated Pinecone initialization
+pc = Pinecone(api_key=st.secrets["PINECONE_API_KEY"])
+idx = pc.Index("zecompete")  # or use host="https://zecompete-1df1x61.svc.aped-4627-b74a.pinecone.io"
 
 tabs = st.tabs(["Ask", "Preview"])
 with tabs[0]:

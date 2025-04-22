@@ -1,33 +1,30 @@
-# src/analytics.py  – vector‑powered Q&A layer for Serverless AWS
-
-import pinecone
+# src/analytics.py - Updated initialization
+from pinecone import Pinecone
 from src.config import secret
-from langchain.vectorstores import Pinecone as PineconeVectorStore
-from langchain.chat_models  import ChatOpenAI
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.chains      import create_retrieval_chain
+from langchain_pinecone import PineconeVectorStore  # Updated import
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings  # Updated import
+from langchain.chains import create_retrieval_chain
 
-# ── 1) Init Pinecone against your **control‑plane** host -----------
-#     (this is the host URL you saw in the Index detail, minus "https://")
-pinecone.init(
-    api_key=secret("PINECONE_API_KEY"),
-    host="controller.us-east-1.aws.pinecone.io"
-)
+# Updated Pinecone initialization
+pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+# No need for host parameter with just the client initialization
 
-# ── 2) Prepare your embedding object --------------------------------
+# Prepare your embedding object
 embedding = OpenAIEmbeddings(
     model="text-embedding-3-small",
     openai_api_key=secret("OPENAI_API_KEY")
 )
 
-# ── 3) Bind to the existing index & namespaces ----------------------
-INDEX_NAME = "zecompete"  # must match your index name exactly
+# Bind to the existing index & namespaces
+INDEX_NAME = "zecompete"
 
 places_vs = PineconeVectorStore.from_existing_index(
     index_name=INDEX_NAME,
     embedding=embedding,
     namespace="maps"
 )
+
+# Rest of the code remains the same...
 
 kw_vs = PineconeVectorStore.from_existing_index(
     index_name=INDEX_NAME,

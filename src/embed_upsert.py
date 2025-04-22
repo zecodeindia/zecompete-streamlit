@@ -1,14 +1,15 @@
 from typing import Iterable, Dict, List
-import pinecone, pandas as pd
+from pinecone import Pinecone  # Updated import
+import pandas as pd
 from openai import OpenAI
 from src.config import secret
 
-# --- init Pinecone & OpenAI once ---------------------------------
-pinecone.init(api_key=secret("PINECONE_API_KEY"), environment=secret("PINECONE_ENV"))
-INDEX = pinecone.Index("zecompete")
+# Updated Pinecone initialization
+pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+INDEX = pc.Index("zecompete")
 
 client = OpenAI(api_key=secret("OPENAI_API_KEY"))
-EMBED_MODEL = "text-embedding-3-small"          # 1536‑dim
+EMBED_MODEL = "text-embedding-3-small"  # 1536‑dim
 
 # --- helpers -----------------------------------------------------
 def _embed(texts: List[str]) -> List[List[float]]:
