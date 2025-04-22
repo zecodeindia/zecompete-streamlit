@@ -1,9 +1,9 @@
-# Updated streamlit_app.py with better error handling for Preview tab
+# Updated streamlit_app.py with unique keys for buttons
 import os, itertools, pandas as pd, streamlit as st
 import json
 from src.run_pipeline import run
 from src.analytics import insight_question
-from pinecone import Pinecone  # Updated import
+from pinecone import Pinecone
 
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
 st.title("🗺️  Competitor Location & Demand Explorer")
@@ -11,11 +11,17 @@ st.title("🗺️  Competitor Location & Demand Explorer")
 brands = st.text_input("Brands (comma)", "Zudio, Max Fashion, Zara, H&M, Trends")
 cities = st.text_input("Cities (comma)", "Bengaluru, Hyderabad")
 
-if st.button("Run analysis"):
+# Add a unique key to this button
+if st.button("Run analysis", key="run_analysis_button"):
+    log_container = st.container()
+    log_container.subheader("Processing Logs")
+    
     for b, c in itertools.product(
             map(str.strip, brands.split(",")),
             map(str.strip, cities.split(","))):
+        log_container.write(f"Processing {b} in {c}...")
         run(b, c)
+    
     st.success("Data ready!")
 
 # Updated Pinecone initialization
@@ -26,7 +32,8 @@ tabs = st.tabs(["Ask", "Preview", "Diagnostic"])
 
 with tabs[0]:
     q = st.text_area("Ask a question about the data")
-    if st.button("Answer") and q:
+    # Add a unique key to this button
+    if st.button("Answer", key="answer_button") and q:
         try:
             answer = insight_question(q)
             st.write(answer)
@@ -100,16 +107,3 @@ with tabs[2]:
             st.warning("No namespaces found in the index. Data may not have been uploaded successfully.")
     except Exception as e:
         st.error(f"Error accessing Pinecone: {str(e)}")
-
-# Update in streamlit_app.py - add a logging area in the "Run analysis" section
-if st.button("Run analysis"):
-    log_container = st.container()
-    log_container.subheader("Processing Logs")
-    
-    for b, c in itertools.product(
-            map(str.strip, brands.split(",")),
-            map(str.strip, cities.split(","))):
-        log_container.write(f"Processing {b} in {c}...")
-        run(b, c)
-    
-    st.success("Data ready!")
