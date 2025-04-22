@@ -2,6 +2,7 @@ import streamlit as st
 from pinecone import Pinecone
 from openai import OpenAI
 import json
+import time  # Add this import
 
 st.set_page_config(page_title="Pinecone Debug", layout="wide")
 st.title("Pinecone Troubleshooter")
@@ -95,7 +96,10 @@ if st.button("Try Test Upsert", key="upsert_test"):
         st.write(result)
         
         # Try to verify the upsert with a query instead of stats
-        time.sleep(1)  # Give a moment for indexing
+        st.write("Waiting 2 seconds for indexing...")
+        time.sleep(2)  # Give a moment for indexing
+        
+        st.write("Querying for the inserted record...")
         query_result = index.query(
             vector=embedding,
             top_k=1,
