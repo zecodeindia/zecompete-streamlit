@@ -8,3 +8,4 @@ openai>=1.0.0
 pandas
 requests
 python-dotenv
+rich<14.0.0
