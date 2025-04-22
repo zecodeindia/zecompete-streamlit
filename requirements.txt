@@ -1,16 +1,12 @@
-# --- core app deps ----------------------
 streamlit==1.34.0
+
+# LangChain unified 0.1 (keeps Rich 13.x)
+langchain==0.1.17
+
+# Pinecone SDK v2 (works with langchain 0.1)
+pinecone-client==2.2.2
+
+openai
 pandas
 requests
-openai
-pinecone-client==2.2.2        # or 3.x if you already updated code
 python-dotenv
-
-# --- LangChain v0.2 split packages -----
-langchain-core==0.2.1
-langchain-community==0.2.1
-langchain-openai==0.2.1
-langchain-pinecone==0.2.1
-
-# --- pin rich to a safe version --------
-rich<14                       # keeps Streamlit happy
