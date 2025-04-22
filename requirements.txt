@@ -1,12 +1,15 @@
 streamlit==1.34.0
 
-# LangChain unified 0.1 (keeps Rich 13.x)
-langchain==0.1.17
+# LangChain 0.2 split packages
+langchain-core==0.2.*
+langchain-community==0.2.*
+langchain-openai==0.2.*
+langchain-pinecone==0.2.*
 
-# Pinecone SDK v2 (works with langchain 0.1)
-pinecone-client==2.2.2
+# Pinecone v3 client
+pinecone-client>=3,<4
 
-openai
-pandas
-requests
-python-dotenv
+ openai
+ pandas
+ requests
+ python-dotenv
