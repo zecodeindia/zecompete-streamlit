@@ -100,3 +100,16 @@ with tabs[2]:
             st.warning("No namespaces found in the index. Data may not have been uploaded successfully.")
     except Exception as e:
         st.error(f"Error accessing Pinecone: {str(e)}")
+
+# Update in streamlit_app.py - add a logging area in the "Run analysis" section
+if st.button("Run analysis"):
+    log_container = st.container()
+    log_container.subheader("Processing Logs")
+    
+    for b, c in itertools.product(
+            map(str.strip, brands.split(",")),
+            map(str.strip, cities.split(","))):
+        log_container.write(f"Processing {b} in {c}...")
+        run(b, c)
+    
+    st.success("Data ready!")
