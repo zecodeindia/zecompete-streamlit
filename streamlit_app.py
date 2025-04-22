@@ -25,7 +25,7 @@ def run_apify_scrape(brand, city):
     import requests
     
     apify_token = st.secrets["APIFY_TOKEN"]
-    task_id = "avadhut.sawant~google-maps-scraper-task"  # Update with your task ID
+    task_id = "zecodemedia~google-maps-scraper-task"  # Update with your task ID
     
     url = f"https://api.apify.com/v2/actor-tasks/{task_id}/run-sync-get-dataset-items"
     params = {"token": apify_token}
