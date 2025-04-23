@@ -1,5 +1,5 @@
 import os, itertools, pandas as pd, streamlit as st
-import time, json, threading
+import time, json, threading, requests
 from pinecone import Pinecone
 from openai import OpenAI
 
@@ -79,7 +79,7 @@ with tabs[0]:
     
     with col2:
         # Option to run with Apify automation
-        task_id = st.text_input("Apify Task ID", "zecodemedia~google-maps-scraper-task")
+        task_id = st.text_input("Apify Task ID", "zecodemedia~google-maps-scraper-task")  # Updated task ID
         
         if st.button("Run with Apify (Automated)", key="run_automated"):
             log_container = st.container()
@@ -173,7 +173,7 @@ with tabs[1]:
     st.code(f"Secret: {webhook_secret}")
     
     # Setup webhook button
-    task_id = st.text_input("Apify Task ID for webhook", "avadhut.sawant~google-maps-scraper-task")
+    task_id = st.text_input("Apify Task ID for webhook", "zecodemedia~google-maps-scraper-task")  # Updated task ID
     
     if st.button("Set Up Webhook in Apify"):
         with st.spinner("Creating webhook..."):
@@ -345,7 +345,7 @@ with tabs[4]:
     except Exception as e:
         st.error(f"Error fetching index stats: {str(e)}")
 
-# Tab 6: Diagnostic (Original functionality)
+# Tab 6: Diagnostic (Original functionality plus new Apify testing)
 with tabs[5]:
     st.subheader("Diagnostic Information")
     
@@ -395,6 +395,121 @@ with tabs[5]:
             st.warning("No namespaces found in the index. Data may not have been uploaded successfully.")
     except Exception as e:
         st.error(f"Error accessing Pinecone: {str(e)}")
+
+    # New Apify diagnostic tools
+    st.markdown("---")
+    st.subheader("Apify API Diagnostic")
+
+    if st.button("Test Apify Connection"):
+        try:
+            from src.config import secret
+            
+            # Get the API token
+            apify_token = secret("APIFY_TOKEN")
+            if not apify_token:
+                st.error("❌ No Apify token found in secrets!")
+            else:
+                st.write(f"API Token (first/last 4 chars): {apify_token[:4]}...{apify_token[-4:]} (length: {len(apify_token)})")
+                
+                # Test endpoint that just returns user info
+                url = "https://api.apify.com/v2/users/me"
+                
+                # Try both authentication methods
+                st.write("Testing with query parameter authentication...")
+                params = {"token": apify_token}
+                resp1 = requests.get(url, params=params)
+                st.write(f"Response status: {resp1.status_code}")
+                
+                st.write("Testing with Bearer token authentication...")
+                headers = {"Authorization": f"Bearer {apify_token}"}
+                resp2 = requests.get(url, headers=headers)
+                st.write(f"Response status: {resp2.status_code}")
+                
+                # Use the successful response or show both errors
+                if resp1.status_code == 200:
+                    data = resp1.json()
+                    st.success("✅ Successfully connected to Apify API using query parameter")
+                    st.write("User info:")
+                    st.json(data)
+                elif resp2.status_code == 200:
+                    data = resp2.json()
+                    st.success("✅ Successfully connected to Apify API using Bearer token")
+                    st.write("User info:")
+                    st.json(data)
+                else:
+                    st.error("❌ Failed to connect to Apify API with both authentication methods")
+                    st.write("Query parameter response:")
+                    st.text(resp1.text)
+                    st.write("Bearer token response:")
+                    st.text(resp2.text)
+                    
+                # Now test the specific task
+                task_id = "zecodemedia~google-maps-scraper-task"
+                task_url = f"https://api.apify.com/v2/actor-tasks/{task_id}"
+                
+                st.write(f"Testing access to task: {task_id}")
+                
+                # Try both authentication methods
+                st.write("Testing task access with query parameter...")
+                task_resp1 = requests.get(task_url, params=params)
+                st.write(f"Response status: {task_resp1.status_code}")
+                
+                st.write("Testing task access with Bearer token...")
+                task_resp2 = requests.get(task_url, headers=headers)
+                st.write(f"Response status: {task_resp2.status_code}")
+                
+                # Use the successful response or show both errors
+                if task_resp1.status_code == 200:
+                    task_data = task_resp1.json()
+                    st.success(f"✅ Successfully accessed task using query parameter")
+                    st.write("Task info:")
+                    st.json(task_data)
+                elif task_resp2.status_code == 200:
+                    task_data = task_resp2.json()
+                    st.success(f"✅ Successfully accessed task using Bearer token")
+                    st.write("Task info:")
+                    st.json(task_data)
+                else:
+                    st.error(f"❌ Failed to access task with both authentication methods")
+                    st.write("Query parameter response:")
+                    st.text(task_resp1.text)
+                    st.write("Bearer token response:")
+                    st.text(task_resp2.text)
+                    
+        except Exception as e:
+            st.error(f"Error during Apify testing: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    st.markdown("---")
+    st.subheader("Test Direct Apify Task Run")
+
+    test_brand = st.text_input("Test brand name", "Zara")
+    test_city = st.text_input("Test city", "Bengaluru")
+
+    if st.button("Run Test Task"):
+        try:
+            from src.scrape_maps import run_apify_task
+            
+            with st.spinner("Running test Apify task..."):
+                run_id, results = run_apify_task(test_brand, test_city, wait=True)
+                
+            if run_id:
+                st.success(f"✅ Successfully started task with run ID: {run_id}")
+                
+                if results:
+                    st.success(f"✅ Task completed and returned {len(results)} results")
+                    st.write("First result:")
+                    st.json(results[0])
+                else:
+                    st.warning("⚠️ Task started but did not return results (it might still be running)")
+            else:
+                st.error("❌ Failed to start task")
+                
+        except Exception as e:
+            st.error(f"Error running test task: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 # Add a webhook handler route
 # Since Streamlit doesn't support real routes, this is a workaround
