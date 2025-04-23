@@ -22,7 +22,7 @@ def suggest_keywords(names: list[str]) -> list[str]:
     return keywords
 
 def tidy_volume(vol_result: dict) -> pd.DataFrame:
-    print(f"Processing volume data: {vol_result}")
+    print(f"Processing volume data")
     rows = []
     for kw in vol_result:
         for m in kw["keyword_info"]["monthly_searches"]:
@@ -49,14 +49,17 @@ def run(brand: str, city: str) -> None:
             return
             
         print(f"Received {len(places)} places from Apify")
-        print(f"First place sample: {places[0] if places else 'None'}")
+        if places:
+            print(f"First place sample: {places[0]}")
         
         # Step 2: Convert to DataFrame and upsert to Pinecone
         print(f"Step 2: Converting to DataFrame and upserting to Pinecone...")
         df_places = pd.json_normalize(places)
         print(f"Created DataFrame with shape {df_places.shape}")
         print(f"DataFrame columns: {df_places.columns.tolist()}")
-        print(f"First row: {df_places.iloc[0].to_dict() if not df_places.empty else 'Empty DataFrame'}")
+        
+        if not df_places.empty:
+            print(f"First row: {df_places.iloc[0].to_dict()}")
         
         upsert_places(df_places, brand, city)
         print("Places upsert completed")
@@ -84,3 +87,18 @@ def run(brand: str, city: str) -> None:
         try:
             vol_raw = fetch_volume(keywords)
             print(f"Received volume data for {len(vol_raw)} keywords")
+            df_kw = tidy_volume(vol_raw)
+            
+            # Step 5: Upsert keyword data to Pinecone
+            print(f"Step 5: Upserting keyword data to Pinecone...")
+            upsert_keywords(df_kw, city)
+            print("Keywords upsert completed")
+        except Exception as e:
+            print(f"Error in keyword processing: {str(e)}")
+            traceback.print_exc()
+        
+        print(f"======= Pipeline completed for {brand} in {city} =======")
+        
+    except Exception as e:
+        print(f"Error in run pipeline for {brand} in {city}: {str(e)}")
+        traceback.print_exc()
