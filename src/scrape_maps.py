@@ -7,7 +7,7 @@ from typing import List, Dict, Optional, Tuple
 from src.config import secret
 
 APIFY_TOKEN = secret("APIFY_TOKEN")
-TASK_ID = "zecodemedia~google-maps-scraper-task"  # Make sure this matches your Apify task
+TASK_ID = "zecodemedia~google-maps-scraper-task"  # Updated correct task ID
 
 def run_apify_task(brand: str, city: str, wait: bool = False) -> Tuple[str, Optional[List[Dict]]]:
     """
@@ -22,9 +22,17 @@ def run_apify_task(brand: str, city: str, wait: bool = False) -> Tuple[str, Opti
         Tuple of (run_id, results or None)
     """
     print(f"Starting Apify task for {brand} in {city}...")
+    print(f"Using task ID: {TASK_ID}")
     
     url = f"https://api.apify.com/v2/actor-tasks/{TASK_ID}/runs"
     params = {"token": APIFY_TOKEN}
+    
+    # Log API token info (safely)
+    if APIFY_TOKEN:
+        print(f"API token available: {APIFY_TOKEN[:4]}...{APIFY_TOKEN[-4:]} (length: {len(APIFY_TOKEN)})")
+    else:
+        print("ERROR: No API token available!")
+    
     payload = {
         "searchStringsArray": [brand],
         "locationQuery": city,
@@ -33,13 +41,29 @@ def run_apify_task(brand: str, city: str, wait: bool = False) -> Tuple[str, Opti
         "maxItems": 20
     }
     
+    print(f"Request URL: {url}")
+    print(f"Payload: {json.dumps(payload)}")
+    
     # Start the task
     try:
+        # Try first with query parameters
         resp = requests.post(url, params=params, json=payload)
+        
+        print(f"Response status code: {resp.status_code}")
+        print(f"Response content: {resp.text[:1000]}")  # Show more of the response
+        
+        # If that doesn't work, try with Authorization header
+        if resp.status_code != 201:
+            print("Trying with Authorization header instead...")
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            resp = requests.post(url, headers=headers, json=payload)
+            print(f"Auth header response status: {resp.status_code}")
+            print(f"Auth header response: {resp.text[:1000]}")
         
         if resp.status_code != 201:
             print(f"Failed to start Apify task: {resp.status_code} - {resp.text}")
-            return "", None
+            # Try the alternative method as a last resort
+            return run_apify_task_alternative(brand, city)
             
         data = resp.json()
         run_id = data.get("id")
@@ -88,6 +112,77 @@ def run_apify_task(brand: str, city: str, wait: bool = False) -> Tuple[str, Opti
         
     except Exception as e:
         print(f"Error starting Apify task: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return "", None
+
+def run_apify_task_alternative(brand: str, city: str) -> Tuple[str, Optional[List[Dict]]]:
+    """Alternative method to run an Apify task"""
+    print(f"Trying alternative method to run Apify task for {brand} in {city}...")
+    
+    # First, try to get actor ID from the task
+    task_url = f"https://api.apify.com/v2/actor-tasks/{TASK_ID}"
+    params = {"token": APIFY_TOKEN}
+    
+    try:
+        # Try with query parameter
+        task_resp = requests.get(task_url, params=params)
+        print(f"Task info response: {task_resp.status_code}")
+        
+        # If that doesn't work, try with Authorization header
+        if task_resp.status_code != 200:
+            print("Trying task info with Authorization header...")
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            task_resp = requests.get(task_url, headers=headers)
+            print(f"Auth header task info response: {task_resp.status_code}")
+        
+        if task_resp.status_code != 200:
+            print(f"Could not get task info: {task_resp.text}")
+            return "", None
+            
+        task_data = task_resp.json()
+        actor_id = task_data.get("actId")
+        
+        if not actor_id:
+            print("Actor ID not found in task data")
+            return "", None
+            
+        # Now try to run the actor directly
+        actor_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+        
+        payload = {
+            "searchStringsArray": [brand],
+            "locationQuery": city,
+            "maxReviews": 0,
+            "maxImages": 0,
+            "maxItems": 20
+        }
+        
+        # Try first with query parameter
+        actor_resp = requests.post(actor_url, params=params, json=payload)
+        print(f"Actor run response: {actor_resp.status_code}")
+        
+        # If that doesn't work, try with Authorization header
+        if actor_resp.status_code != 201:
+            print("Trying actor run with Authorization header...")
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            actor_resp = requests.post(actor_url, headers=headers, json=payload)
+            print(f"Auth header actor run response: {actor_resp.status_code}")
+        
+        if actor_resp.status_code != 201:
+            print(f"Failed to run actor: {actor_resp.text}")
+            return "", None
+            
+        run_data = actor_resp.json()
+        run_id = run_data.get("id")
+        
+        print(f"Actor run started with ID: {run_id}")
+        return run_id, None
+        
+    except Exception as e:
+        print(f"Error in alternative task run method: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return "", None
 
 def fetch_dataset_items(dataset_id: str) -> Optional[List[Dict]]:
@@ -98,7 +193,14 @@ def fetch_dataset_items(dataset_id: str) -> Optional[List[Dict]]:
     params = {"token": APIFY_TOKEN}
     
     try:
+        # Try with query parameter
         resp = requests.get(url, params=params)
+        
+        # If that doesn't work, try with Authorization header
+        if resp.status_code != 200:
+            print("Trying dataset fetch with Authorization header...")
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            resp = requests.get(url, headers=headers)
         
         if resp.status_code != 200:
             print(f"Failed to fetch dataset: {resp.status_code} - {resp.text}")
@@ -115,6 +217,8 @@ def fetch_dataset_items(dataset_id: str) -> Optional[List[Dict]]:
         
     except Exception as e:
         print(f"Error fetching dataset: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return None
 
 def check_task_status(run_id: str) -> str:
@@ -123,7 +227,13 @@ def check_task_status(run_id: str) -> str:
     params = {"token": APIFY_TOKEN}
     
     try:
+        # Try with query parameter
         resp = requests.get(url, params=params)
+        
+        # If that doesn't work, try with Authorization header
+        if resp.status_code != 200:
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            resp = requests.get(url, headers=headers)
         
         if resp.status_code != 200:
             print(f"Failed to check task status: {resp.status_code} - {resp.text}")
@@ -142,7 +252,13 @@ def get_dataset_id_from_run(run_id: str) -> Optional[str]:
     params = {"token": APIFY_TOKEN}
     
     try:
+        # Try with query parameter
         resp = requests.get(url, params=params)
+        
+        # If that doesn't work, try with Authorization header
+        if resp.status_code != 200:
+            headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+            resp = requests.get(url, headers=headers)
         
         if resp.status_code != 200:
             print(f"Failed to get run info: {resp.status_code} - {resp.text}")
