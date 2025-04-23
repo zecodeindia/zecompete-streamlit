@@ -144,3 +144,281 @@ with tabs[0]:
             st.write("Pending tasks:")
             for task in pending_tasks:
                 st.write(f"• {task['brand']} in {task['city']} (Run ID: {task['run_id']})")
+        
+        # Auto-refresh the page
+        if running_tasks and st.session_state.auto_refresh:
+            st.experimental_rerun()
+
+# Tab 2: Auto Integration setup
+with tabs[1]:
+    st.header("Auto Integration Setup")
+    st.markdown("""
+    Set up automatic processing of Apify results when tasks complete. This can be done via:
+    1. **Webhook Integration** - Automatically process data when Apify tasks complete
+    2. **Direct Dataset Processing** - Manually trigger processing for specific Apify datasets
+    """)
+    
+    # Webhook integration section
+    st.subheader("Webhook Integration")
+    
+    # Get app URL for webhook callback
+    app_url = st.text_input("Your app URL (for webhooks)", "https://zecompete-app.streamlit.app")
+    callback_url = f"{app_url}/webhook"
+    
+    # Display webhook information
+    webhook_secret = get_webhook_secret()
+    
+    st.markdown("#### Webhook Configuration")
+    st.code(f"URL: {callback_url}")
+    st.code(f"Secret: {webhook_secret}")
+    
+    # Setup webhook button
+    task_id = st.text_input("Apify Task ID for webhook", "avadhut.sawant~google-maps-scraper-task")
+    
+    if st.button("Set Up Webhook in Apify"):
+        with st.spinner("Creating webhook..."):
+            webhook_id = create_apify_webhook(task_id, callback_url)
+            
+            if webhook_id:
+                st.success(f"✅ Webhook created with ID: {webhook_id}")
+                st.markdown("""
+                ### Next Steps:
+                1. Run your Apify tasks from the "Run Analysis" tab
+                2. When tasks complete, Apify will call your app's webhook
+                3. Tasks will be automatically processed and data uploaded to Pinecone
+                """)
+            else:
+                st.error("❌ Failed to create webhook")
+                st.markdown("""
+                ### Troubleshooting:
+                - Make sure your Apify API token has the correct permissions
+                - Verify that the Task ID is correct
+                - If webhook creation fails, use the direct dataset processing method below
+                """)
+    
+    # Direct dataset processing section
+    st.markdown("---")
+    st.subheader("Direct Dataset Processing")
+    st.markdown("""
+    If webhook integration isn't feasible (e.g., in Streamlit Cloud where incoming webhooks aren't supported),
+    you can manually process Apify datasets after tasks complete.
+    """)
+    
+    dataset_id = st.text_input("Apify Dataset ID")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        brand = st.text_input("Brand", "Zecode")
+    
+    with col2:
+        city = st.text_input("City", "Bengaluru")
+    
+    if st.button("Process Dataset") and dataset_id:
+        with st.spinner(f"Processing dataset {dataset_id}..."):
+            success = process_dataset_directly(dataset_id, brand, city)
+            
+            if success:
+                st.success(f"✅ Successfully processed dataset for {brand} in {city}")
+            else:
+                st.error(f"❌ Failed to process dataset {dataset_id}")
+    
+    # Instructions for webhook forwarding
+    st.markdown("---")
+    st.subheader("Webhook Forwarding Services")
+    st.markdown("""
+    Since Streamlit Cloud doesn't support direct incoming webhooks, you can use a webhook forwarding service:
+    
+    1. **[Hookdeck](https://hookdeck.com)** - Receive webhooks and forward them to your app
+    2. **[Pipedream](https://pipedream.com)** - Create workflows triggered by webhooks
+    3. **[webhook.site](https://webhook.site)** - For testing and debugging webhooks
+    
+    **Basic setup:**
+    1. Create an account with a forwarding service
+    2. Configure it to forward Apify webhooks to your app's `/webhook` endpoint
+    3. Use the forwarding URL when creating the webhook in Apify
+    """)
+
+# Tab 3: Manual Upload (Original functionality)
+with tabs[2]:
+    st.header("Upload Apify CSV (Optional)")
+    uploaded_file = st.file_uploader("Upload the Apify CSV file", type="csv")
+
+    if uploaded_file is not None:
+        st.write("Processing uploaded CSV file...")
+        df = pd.read_csv(uploaded_file)
+        st.write(f"CSV contains {len(df)} rows and {len(df.columns)} columns")
+        
+        # Sample of the data
+        st.write("Sample of the data:")
+        st.dataframe(df.head(3))
+        
+        # Upload to Pinecone button
+        if st.button("Upload CSV data to Pinecone"):
+            if pinecone_success and import_success:
+                try:
+                    # Extract brand from searchString if available
+                    if 'searchString' in df.columns:
+                        brand = df['searchString'].iloc[0] if not df.empty else "Unknown"
+                    else:
+                        brand = st.text_input("Brand name (not found in CSV)", "Zecode")
+                    
+                    # Extract city or use default
+                    if 'city' in df.columns:
+                        city = df['city'].iloc[0] if not df.empty else "Bengaluru"
+                    else:
+                        city = st.text_input("City (not found in CSV)", "Bengaluru")
+                    
+                    st.write(f"Uploading to Pinecone for brand: {brand}, city: {city}...")
+                    # Generate embeddings and upload to Pinecone
+                    upsert_places(df, brand, city)
+                    st.success("✅ CSV data uploaded to Pinecone successfully!")
+                except Exception as e:
+                    st.error(f"Error uploading to Pinecone: {str(e)}")
+            else:
+                st.error("Cannot upload to Pinecone due to connection or import issues")
+
+# Tab 4: Ask Questions (Original functionality)
+with tabs[3]:
+    st.header("Ask Questions About Your Data")
+    q = st.text_area("Enter your question about the competitor data")
+    if st.button("Answer", key="answer_button") and q:
+        try:
+            answer = insight_question(q)
+            st.write(answer)
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+            st.write("Please try a simpler question or check the Diagnostic tab to verify data exists.")
+
+# Tab 5: Explore Data (Original functionality)
+with tabs[4]:
+    st.header("Explore Stored Data")
+    try:
+        res = idx.describe_index_stats()
+        
+        # Display as text, not JSON
+        st.subheader("Index Statistics")
+        st.write("Dimension:", res.get("dimension", "N/A"))
+        st.write("Total vector count:", res.get("total_vector_count", 0))
+        st.write("Index fullness:", res.get("index_fullness", 0))
+        
+        # Handle namespaces specifically
+        st.subheader("Namespaces")
+        namespaces = res.get("namespaces", {})
+        if namespaces:
+            for ns_name, ns_data in namespaces.items():
+                st.write(f"Namespace: {ns_name}")
+                st.write(f"Vector count: {ns_data.get('vector_count', 0)}")
+                
+                # Add button to view data from this namespace
+                if st.button(f"View data from {ns_name}", key=f"view_{ns_name}"):
+                    try:
+                        # Create a dummy vector for search
+                        dummy_vector = [0] * res.get("dimension", 1536)
+                        
+                        # Query to get records
+                        results = idx.query(
+                            vector=dummy_vector,
+                            top_k=10,
+                            namespace=ns_name,
+                            include_metadata=True
+                        )
+                        
+                        # Display results in a table
+                        if results.matches:
+                            # Extract metadata
+                            data = []
+                            for match in results.matches:
+                                if match.metadata:
+                                    data.append(match.metadata)
+                            
+                            if data:
+                                df = pd.DataFrame(data)
+                                st.dataframe(df)
+                            else:
+                                st.write("No metadata available for these records")
+                        else:
+                            st.write("No records found")
+                    except Exception as e:
+                        st.error(f"Error retrieving data: {str(e)}")
+        else:
+            st.write("No namespaces found")
+    except Exception as e:
+        st.error(f"Error fetching index stats: {str(e)}")
+
+# Tab 6: Diagnostic (Original functionality)
+with tabs[5]:
+    st.subheader("Diagnostic Information")
+    
+    # Check namespaces and count
+    try:
+        stats = idx.describe_index_stats()
+        
+        # Display basic stats as text
+        st.write(f"Dimension: {stats.get('dimension')}")
+        st.write(f"Total vectors: {stats.get('total_vector_count')}")
+        st.write(f"Index fullness: {stats.get('index_fullness')}")
+        
+        namespaces = stats.get("namespaces", {})
+        if namespaces:
+            st.success(f"Found {len(namespaces)} namespaces: {', '.join(namespaces.keys())}")
+            
+            # Show sample data from each namespace
+            for ns in namespaces:
+                st.subheader(f"Sample data from '{ns}' namespace")
+                try:
+                    # Fetch a few vectors to verify content
+                    query_response = idx.query(
+                        vector=[0] * stats.get("dimension", 1536),  # Dummy vector for metadata-only query
+                        top_k=5,
+                        namespace=ns,
+                        include_metadata=True
+                    )
+                    
+                    if query_response.matches:
+                        st.write(f"Found {len(query_response.matches)} records")
+                        # Convert to DataFrame for better display
+                        data = []
+                        for match in query_response.matches:
+                            if match.metadata:
+                                data.append(match.metadata)
+                        
+                        if data:
+                            df = pd.DataFrame(data)
+                            st.dataframe(df)
+                        else:
+                            st.write("No metadata available for these records")
+                    else:
+                        st.warning(f"No records found in namespace '{ns}'")
+                except Exception as e:
+                    st.error(f"Error querying namespace '{ns}': {str(e)}")
+        else:
+            st.warning("No namespaces found in the index. Data may not have been uploaded successfully.")
+    except Exception as e:
+        st.error(f"Error accessing Pinecone: {str(e)}")
+
+# Add a webhook handler route
+# Since Streamlit doesn't support real routes, this is a workaround
+st.markdown("---")
+st.write("### Webhook Handler")
+st.write("This section handles webhook callbacks from Apify (for demonstration purposes).")
+
+webhook_data = st.text_area("For testing, paste webhook JSON payload here:", "", key="webhook_payload")
+
+if st.button("Process Webhook Payload") and webhook_data:
+    try:
+        payload = json.loads(webhook_data)
+        from src.webhook_handler import handle_webhook_payload
+        
+        success = handle_webhook_payload(payload)
+        if success:
+            st.success("✅ Webhook processed successfully")
+        else:
+            st.error("❌ Webhook processing failed")
+    except json.JSONDecodeError:
+        st.error("Invalid JSON payload")
+    except Exception as e:
+        st.error(f"Error processing webhook: {str(e)}")
+
+# Footer
+st.markdown("---")
+st.write("© 2025 Zecode - Competitor Location & Demand Explorer")
