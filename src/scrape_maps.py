@@ -7,7 +7,7 @@ from typing import List, Dict, Optional, Tuple
 from src.config import secret
 
 APIFY_TOKEN = secret("APIFY_TOKEN")
-TASK_ID = "avadhut.sawant~google-maps-scraper-task"  # Make sure this matches your Apify task
+TASK_ID = "zecodemedia~google-maps-scraper-task"  # Make sure this matches your Apify task
 
 def run_apify_task(brand: str, city: str, wait: bool = False) -> Tuple[str, Optional[List[Dict]]]:
     """
