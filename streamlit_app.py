@@ -79,7 +79,7 @@ with tabs[0]:
     
     with col2:
         # Option to run with Apify automation
-        task_id = st.text_input("Apify Task ID", "avadhut.sawant~google-maps-scraper-task")
+        task_id = st.text_input("Apify Task ID", "zecodemedia~google-maps-scraper-task")
         
         if st.button("Run with Apify (Automated)", key="run_automated"):
             log_container = st.container()
