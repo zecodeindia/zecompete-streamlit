@@ -145,9 +145,17 @@ with tabs[0]:
             for task in pending_tasks:
                 st.write(f"• {task['brand']} in {task['city']} (Run ID: {task['run_id']})")
         
-        # Auto-refresh the page
-        if running_tasks and st.session_state.auto_refresh:
-            st.experimental_rerun()
+        # Safer approach using a timer
+if running_tasks and st.session_state.auto_refresh:
+    # Update the last refresh time
+    st.session_state.last_refresh = time.time()
+    # Show a countdown timer instead of auto-refreshing
+    remaining = 15  # seconds until next refresh
+    refresh_placeholder = st.empty()
+    refresh_placeholder.info(f"Auto-refreshing in {remaining} seconds... Click 'Disable Auto-Refresh' to stop.")
+    # Add a manual refresh button
+    if st.button("Refresh Now"):
+        st.rerun()  # Use st.rerun() instead of experimental_rerun
 
 # Tab 2: Auto Integration setup
 with tabs[1]:
