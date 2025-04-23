@@ -116,7 +116,7 @@ with tabs[0]:
         # Show a toggle to disable auto-refresh
         if st.button("Disable Auto-Refresh"):
             st.session_state.auto_refresh = False
-            st.experimental_rerun()
+            st.rerun()  # Use st.rerun() instead of experimental_rerun
         
         # Check if we should refresh
         current_time = time.time()
@@ -344,8 +344,7 @@ with tabs[4]:
                                         data.append(match.metadata)
                                 
                                 if data:
-                                    df
-                                    = pd.DataFrame(data)
+                                    df = pd.DataFrame(data)  # Fixed line
                                     st.dataframe(df)
                                 else:
                                     st.write("No metadata available for these records")
@@ -366,7 +365,7 @@ with tabs[4]:
                                 st.success(f"Successfully deleted namespace '{ns_name}'")
                                 
                                 # Refresh the page to show updated stats
-                                st.experimental_rerun()
+                                st.rerun()  # Use st.rerun() instead of experimental_rerun
                         except Exception as e:
                             st.error(f"Error deleting namespace {ns_name}: {str(e)}")
                 
@@ -415,7 +414,7 @@ with tabs[5]:
                                 data.append(match.metadata)
                         
                         if data:
-                            df = pd.DataFrame(data)
+                            df = pd.DataFrame(data)  # Fixed line
                             st.dataframe(df)
                         else:
                             st.write("No metadata available for these records")
