@@ -157,7 +157,6 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
 +        location_code=2840,
 +        language_code="en",
 +    ):
-+        # DFS “historical_search_volume/live” comes back as an `items` list
 +        for item in blk.get("items", []):
 +            rows.append(
 +                {
