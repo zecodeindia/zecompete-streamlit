@@ -2,6 +2,7 @@ import os, itertools, pandas as pd, streamlit as st
 import time, json, threading, requests
 from pinecone import Pinecone
 from openai import OpenAI
+import secrets
 
 # Set up the app
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
@@ -37,7 +38,7 @@ try:
     # Import new modules for automation
     from src.scrape_maps import run_scrape, run_apify_task, check_task_status
     from src.task_manager import add_task, process_all_tasks, get_running_tasks, get_pending_tasks
-    from src.webhook_handler import get_webhook_secret, process_dataset_directly, create_apify_webhook
+    from src.webhook_handler import process_dataset_directly, create_apify_webhook
     
     # Import keyword pipeline module
     from src.keyword_pipeline import run_keyword_pipeline, get_business_names_from_pinecone
@@ -47,6 +48,18 @@ try:
 except Exception as e:
     st.error(f"Import error: {str(e)}")
     import_success = False
+
+# Define get_webhook_secret function here since it's missing or not properly imported
+def get_webhook_secret():
+    """Get or create a webhook secret"""
+    # Try to get from Streamlit secrets
+    try:
+        return secret("WEBHOOK_SECRET")
+    except:
+        # Generate a new one
+        if "webhook_secret" not in st.session_state:
+            st.session_state.webhook_secret = secrets.token_hex(16)
+        return st.session_state.webhook_secret
 
 # Define tabs
 tabs = st.tabs(["Run Analysis", "Auto Integration", "Keywords & Search Volume", "Manual Upload", "Ask Questions", "Explore Data", "Diagnostic"])
