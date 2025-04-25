@@ -5,7 +5,7 @@
 
 Changes vs. previous version
 ----------------------------
-1. System + few‑shot prompt ⇒ eliminates generic / competitor keywords.
+1. System  few‑shot prompt ⇒ eliminates generic / competitor keywords.
 2. Adds *city* parameter so local‑intent terms include the city.
 3. Filters out any keyword that doesn’t contain one of the business tokens.
 4. Calls DataForSEO with `include_clickstream=True` for better long‑tail data.
@@ -99,7 +99,7 @@ get_business_names_from_pinecone = _business_names_from_pinecone
 # -----------------------------------------------------------------------------
 
 def _norm(txt: str) -> str:
-    return unicodedata.normalize("NFKD", re.sub(r"\W+", "", txt.lower()))
+    return unicodedata.normalize("NFKD", re.sub(r"\W", "", txt.lower()))
 
 
 def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -> List[str]:
@@ -109,11 +109,11 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
     tokens = [_norm(n) for n in biz]
 
     sys_prompt = _SYSTEM_PROMPT.replace("<CITY>", city)
-    prefix = _FEW_SHOT + f"\n\nBusinesses (city = {city}):\n"
+    prefix = _FEW_SHOT  f"\n\nBusinesses (city = {city}):\n"
 
     kws: set[str] = set()
     for i in range(0, len(biz), _BATCH):
-        prompt = prefix + "\n".join(biz[i : i + _BATCH])
+        prompt = prefix  "\n".join(biz[i : i  _BATCH])
         rsp = _openai.chat.completions.create(
             model=_OPENAI_MODEL,
             temperature=0.2,
@@ -136,36 +136,36 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
 
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
      rows: list[Dict] = []
--    for blk in fetch_volume(
--        keywords,
--        include_clickstream=True,
--        location_code=2840,
--        language_code="en",
--    ):
--        for m in blk.get("keyword_info", {}).get("monthly_searches", []):
--            rows.append(
--                {
--                    "keyword": blk["keyword"],
--                    "year": m["year"],
--                    "month": m["month"],
--                    "search_volume": m["search_volume"],
--                }
--            )
-+    for blk in fetch_volume(
-+        keywords,
-+        include_clickstream=True,
-+        location_code=2840,
-+        language_code="en",
-+    ):
-+        for item in blk.get("items", []):
-+            rows.append(
-+                {
-+                    "keyword": blk["keyword"],
-+                    "year": item["year"],
-+                    "month": item["month"],
-+                    "search_volume": item["search_volume"],
-+                }
-+            )
+    for blk in fetch_volume(
+        keywords,
+        include_clickstream=True,
+        location_code=2840,
+        language_code="en",
+    ):
+        for m in blk.get("keyword_info", {}).get("monthly_searches", []):
+            rows.append(
+                {
+                    "keyword": blk["keyword"],
+                    "year": m["year"],
+                    "month": m["month"],
+                    "search_volume": m["search_volume"],
+                }
+            )
+    for blk in fetch_volume(
+        keywords,
+        include_clickstream=True,
+        location_code=2840,
+        language_code="en",
+    ):
+        for item in blk.get("items", []):
+            rows.append(
+                {
+                    "keyword": blk["keyword"],
+                    "year": item["year"],
+                    "month": item["month"],
+                    "search_volume": item["search_volume"],
+                }
+            )
      return pd.DataFrame(rows)
 
 # -----------------------------------------------------------------------------
