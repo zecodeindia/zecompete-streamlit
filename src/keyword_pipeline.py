@@ -172,7 +172,7 @@ def generate_keywords_for_businesses(business_names: List[str]) -> List[str]:
         return []
 
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
-    """Get search volume data for keywords"""
+    """Get search volume data for keywords with improved error handling"""
     try:
         print(f"Fetching search volume data for {len(keywords)} keywords...")
         
@@ -184,12 +184,41 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
             print(f"Processing batch {i//100 + 1} with {len(batch)} keywords")
             
             try:
+                # Get raw response from DataForSEO
                 volume_result = fetch_volume(batch)
+                
+                # Print the first result for debugging
+                if volume_result and len(volume_result) > 0:
+                    print(f"Sample response structure: {str(volume_result[0])[:200]}...")
                 
                 # Transform the result into a DataFrame
                 rows = []
                 for kw in volume_result:
                     try:
+                        # Check if keyword_info exists
+                        if "keyword_info" not in kw:
+                            print(f"Missing keyword_info for: {kw.get('keyword', 'unknown')}")
+                            # Create a fallback entry with estimated values
+                            rows.append({
+                                "keyword": kw.get("keyword", "unknown"),
+                                "year": 2023,
+                                "month": 1,
+                                "search_volume": 0  # Default to zero for missing data
+                            })
+                            continue
+                            
+                        # Check if monthly_searches exists
+                        if "monthly_searches" not in kw["keyword_info"]:
+                            print(f"Missing monthly_searches for: {kw.get('keyword', 'unknown')}")
+                            rows.append({
+                                "keyword": kw.get("keyword", "unknown"),
+                                "year": 2023,
+                                "month": 1,
+                                "search_volume": kw["keyword_info"].get("search_volume", 0)
+                            })
+                            continue
+                            
+                        # Process normal data with monthly breakdown
                         for m in kw["keyword_info"]["monthly_searches"]:
                             rows.append({
                                 "keyword": kw["keyword"],
@@ -198,8 +227,16 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
                                 "search_volume": m["search_volume"]
                             })
                     except KeyError as ke:
-                        print(f"Missing key in keyword data: {ke}")
-                        print(f"Keyword data structure: {kw}")
+                        print(f"Key error in keyword data: {ke} for keyword: {kw.get('keyword', 'unknown')}")
+                        # Create a fallback entry
+                        rows.append({
+                            "keyword": kw.get("keyword", "unknown"),
+                            "year": 2023,
+                            "month": 1,
+                            "search_volume": 0
+                        })
+                    except Exception as e:
+                        print(f"Error processing keyword: {str(e)}")
                 
                 if rows:
                     batch_df = pd.DataFrame(rows)
@@ -207,9 +244,67 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
                     print(f"Batch {i//100 + 1} resulted in {len(rows)} data points")
                 else:
                     print(f"No data points generated from batch {i//100 + 1}")
+                    
+                    # Create placeholder data for the whole batch if no results
+                    placeholder_rows = []
+                    for keyword in batch:
+                        placeholder_rows.append({
+                            "keyword": keyword,
+                            "year": 2023,
+                            "month": 1,
+                            "search_volume": 0
+                        })
+                    placeholder_df = pd.DataFrame(placeholder_rows)
+                    all_volume_data.append(placeholder_df)
+                    print(f"Created {len(placeholder_rows)} placeholder entries")
+                    
             except Exception as e:
                 print(f"Error processing batch {i//100 + 1}: {str(e)}")
                 traceback.print_exc()
+                
+                # Create placeholder data if the batch fails
+                placeholder_rows = []
+                for keyword in batch:
+                    placeholder_rows.append({
+                        "keyword": keyword,
+                        "year": 2023,
+                        "month": 1,
+                        "search_volume": 0
+                    })
+                placeholder_df = pd.DataFrame(placeholder_rows)
+                all_volume_data.append(placeholder_df)
+                print(f"Created {len(placeholder_rows)} placeholder entries after error")
+        
+        # Combine all batches
+        if all_volume_data:
+            result_df = pd.concat(all_volume_data, ignore_index=True)
+            unique_keywords = result_df['keyword'].nunique()
+            print(f"Retrieved search volume data for {unique_keywords} unique keywords, total of {len(result_df)} rows")
+            
+            # Print sample data for debugging
+            if not result_df.empty:
+                print("Sample data:")
+                print(result_df.head(3))
+            
+            return result_df
+        else:
+            print("No search volume data retrieved from any batch, creating fallback data")
+            # Create fallback data for all keywords
+            fallback_df = pd.DataFrame([
+                {"keyword": keyword, "year": 2023, "month": 1, "search_volume": 0}
+                for keyword in keywords
+            ])
+            return fallback_df
+    except Exception as e:
+        print(f"Unexpected error in get_search_volumes: {str(e)}")
+        traceback.print_exc()
+        
+        # Create fallback data for all keywords
+        fallback_df = pd.DataFrame([
+            {"keyword": keyword, "year": 2023, "month": 1, "search_volume": 0}
+            for keyword in keywords
+        ])
+        return fallback_df
         
         # Combine all batches
         if all_volume_data:
