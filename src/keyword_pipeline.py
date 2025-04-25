@@ -204,7 +204,6 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
 # -----------------------------------------------------------------------------
 # Full pipeline (backward‑compatible)
 # -----------------------------------------------------------------------------
-
 def run_keyword_pipeline(city: str = "General") -> bool:
     try:
         # Initialize Pinecone
@@ -231,23 +230,58 @@ def run_keyword_pipeline(city: str = "General") -> bool:
             return False
         print(f"Generated {len(kws)} keywords")
         
+        # Add more verbose debugging for the search volume fetch
+        print(f"Fetching search volume data for keywords: {kws[:5]}...")
         df = get_search_volumes(kws)
+        
+        # Detailed inspection of the DataFrame
+        print(f"DataFrame empty? {df.empty}")
+        print(f"DataFrame shape: {df.shape}")
+        
+        if not df.empty:
+            print(f"DataFrame columns: {df.columns.tolist()}")
+            print(f"DataFrame data types: {df.dtypes}")
+            # Print first 5 rows
+            print("First 5 rows of data:")
+            for idx, row in df.head(5).iterrows():
+                print(f"  Row {idx}: {dict(row)}")
+            
         if df.empty:
             print("No search volume data returned")
             return False
-        print(f"Got search volume data: {len(df)} rows")
         
-        # Print some stats about the search volumes
+        # Ensure search_volume is properly converted to integers
+        if 'search_volume' in df.columns:
+            df['search_volume'] = df['search_volume'].astype(int)
+            print(f"Converted search_volume to integers: {df['search_volume'].dtype}")
+        
+        # Print sample data
         if not df.empty:
-            print(f"Search volume stats: min={df['search_volume'].min()}, max={df['search_volume'].max()}, avg={df['search_volume'].mean()}")
-            print(f"Sample data: {df.head(5).to_dict()}")
+            print(f"Final search volume stats: min={df['search_volume'].min()}, max={df['search_volume'].max()}, mean={df['search_volume'].mean()}")
             
         upsert_keywords(df, city)
         print("Successfully uploaded keyword data to Pinecone")
+        
+        # After upload, verify the data in Pinecone
+        try:
+            dummy_vector = [0.0] * 1536  # Standard dimension
+            results = index.query(
+                vector=dummy_vector,
+                top_k=5,
+                namespace="keywords",
+                include_metadata=True
+            )
+            
+            print(f"Verification - Retrieved {len(results.matches)} records from Pinecone")
+            for i, match in enumerate(results.matches):
+                if match.metadata:
+                    print(f"  Record {i}: {match.metadata}")
+                    
+        except Exception as e:
+            print(f"Error verifying uploaded data: {str(e)}")
+            
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Error in run_keyword_pipeline: {str(e)}")
         traceback.print_exc()
         return False
-
-if __name__ == "__main__":
-    run_keyword_pipeline("Bengaluru")
