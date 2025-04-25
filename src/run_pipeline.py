@@ -32,21 +32,21 @@ def _clean_places(raw: list[dict]) -> pd.DataFrame:
 def run(brand: str, city: str) -> None:
     logging.info("=== Pipeline start ▸ %s | %s", brand, city)
 
-    # Clear existing data in Pinecone
+    # Clear ALL existing data in Pinecone
     try:
-        logging.info(f"Initializing Pinecone and clearing previous data...")
+        logging.info(f"Initializing Pinecone and clearing ALL previous data...")
         pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
         index = pc.Index("zecompete")
         
         # Clear data in maps namespace 
-        logging.info(f"Clearing existing data for maps namespace...")
+        logging.info(f"Clearing ALL existing data from 'maps' namespace...")
         index.delete(delete_all=True, namespace="maps")
-        logging.info("✓ Successfully cleared previous maps data")
+        logging.info("✓ Successfully cleared all previous maps data")
         
         # Clear data in keywords namespace
-        logging.info(f"Clearing existing data for keywords namespace...")
+        logging.info(f"Clearing ALL existing data from 'keywords' namespace...")
         index.delete(delete_all=True, namespace="keywords")
-        logging.info("✓ Successfully cleared previous keywords data")
+        logging.info("✓ Successfully cleared all previous keywords data")
     except Exception as e:
         logging.warning(f"Warning: Could not clear previous data: {str(e)}")
 
@@ -77,13 +77,48 @@ def run(brand: str, city: str) -> None:
     # 3️⃣  Search volume fetch + tidy
     logging.info(f"Fetching search volume data for {len(keywords)} keywords...")
     df_kw = get_search_volumes(keywords)
-    df_kw = df_kw.assign(city=city).query("search_volume > 0")
-    logging.info(f"Retrieved search volume data for {len(df_kw)} keyword-month combinations")
+    
+    # Log search volume data stats
+    if not df_kw.empty:
+        logging.info(f"Retrieved search volume data: shape={df_kw.shape}")
+        if 'search_volume' in df_kw.columns:
+            # Ensure search_volume is numeric
+            df_kw['search_volume'] = pd.to_numeric(df_kw['search_volume'], errors='coerce').fillna(0).astype(int)
+            # Filter non-zero values
+            non_zero = df_kw[df_kw['search_volume'] > 0]
+            logging.info(f"Non-zero search volumes: {len(non_zero)} rows")
+            if not non_zero.empty:
+                logging.info(f"Search volume stats: min={non_zero['search_volume'].min()}, max={non_zero['search_volume'].max()}, mean={non_zero['search_volume'].mean():.2f}")
+    
+    df_kw = df_kw.assign(city=city)
+    
+    # Make sure to keep rows even if search_volume is 0
+    # (commented out the filter that would remove zero search volume rows)
+    # df_kw = df_kw.query("search_volume > 0")
+    
+    logging.info(f"Prepared keyword data with {len(df_kw)} keyword-month combinations")
 
     # 4️⃣  Upsert keyword data
     logging.info(f"Upserting keyword data to Pinecone...")
     upsert_keywords(df_kw, city)
     logging.info("✓ Keyword data uploaded to Pinecone")
+
+    # Verify final status
+    try:
+        pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+        index = pc.Index("zecompete")
+        stats = index.describe_index_stats()
+        
+        logging.info("Final Pinecone Index Status:")
+        if "maps" in stats.get("namespaces", {}):
+            maps_count = stats["namespaces"]["maps"].get("vector_count", 0)
+            logging.info(f"  Maps namespace: {maps_count} vectors")
+        
+        if "keywords" in stats.get("namespaces", {}):
+            kw_count = stats["namespaces"]["keywords"].get("vector_count", 0)
+            logging.info(f"  Keywords namespace: {kw_count} vectors")
+    except Exception as e:
+        logging.warning(f"Could not verify final status: {str(e)}")
 
     logging.info(
         "Pipeline finished ✓  %s places → %s keywords (%s volume rows)",
@@ -101,3 +136,5 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     run(args.brand, args.city)
+econe
+    logging.info(f"Upserting places data to Pin
