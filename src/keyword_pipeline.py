@@ -19,22 +19,77 @@ def get_business_names_from_pinecone() -> List[str]:
     dimension = 1536  # Standard OpenAI embedding dimension
     dummy_vector = [0] * dimension
     
-    # Query with a large limit to get all records
-    results = index.query(
-        vector=dummy_vector,
-        top_k=100,  # Adjust based on your data size
-        include_metadata=True,
-        namespace="maps"  # Use the namespace where your business data is stored
-    )
+    # Get all available namespaces
+    stats = index.describe_index_stats()
+    namespaces = list(stats.get("namespaces", {}).keys())
+    print(f"Found namespaces: {namespaces}")
     
-    # Extract business names from metadata
-    business_names = []
-    for match in results.matches:
-        if match.metadata and "name" in match.metadata:
-            business_names.append(match.metadata["name"])
+    all_business_names = []
+    
+    # Try all namespaces to find business names
+    for namespace in namespaces:
+        print(f"Checking namespace: {namespace}")
+        if namespace == "keywords":
+            continue  # Skip the keywords namespace
+            
+        # Query with a large limit to get records from this namespace
+        try:
+            results = index.query(
+                vector=dummy_vector,
+                top_k=100,  # Adjust based on your data size
+                include_metadata=True,
+                namespace=namespace
+            )
+            
+            # Extract business names from metadata, trying different field names
+            namespace_names = []
+            
+            for match in results.matches:
+                if not match.metadata:
+                    continue
+                    
+                # Try different field names that might contain business names
+                name = None
+                for field in ['name', 'title', 'business_name', 'brand', 'company']:
+                    if field in match.metadata and match.metadata[field]:
+                        name = match.metadata[field]
+                        break
+                
+                if name:
+                    namespace_names.append(name)
+            
+            print(f"Found {len(namespace_names)} business names in namespace '{namespace}'")
+            all_business_names.extend(namespace_names)
+        except Exception as e:
+            print(f"Error querying namespace '{namespace}': {str(e)}")
+    
+    # If we found nothing in namespaces, try one more time with no namespace
+    if not all_business_names:
+        try:
+            results = index.query(
+                vector=dummy_vector,
+                top_k=100,
+                include_metadata=True
+            )
+            
+            for match in results.matches:
+                if not match.metadata:
+                    continue
+                    
+                # Try different field names again
+                name = None
+                for field in ['name', 'title', 'business_name', 'brand', 'company']:
+                    if field in match.metadata and match.metadata[field]:
+                        name = match.metadata[field]
+                        break
+                
+                if name:
+                    all_business_names.append(name)
+        except Exception as e:
+            print(f"Error querying default namespace: {str(e)}")
     
     # Remove duplicates
-    business_names = list(set(business_names))
+    business_names = list(set(all_business_names))
     print(f"Retrieved {len(business_names)} unique business names")
     
     return business_names
