@@ -1,4 +1,4 @@
-# src/analytics.py - Updated with new Pinecone initialization
+# src/analytics.py - Updated to handle both business and keyword data
 from pinecone import Pinecone
 from src.config import secret
 from openai import OpenAI
@@ -24,28 +24,55 @@ def insight_question(question: str) -> str:
         )
         query_embedding = response.data[0].embedding
         
-        # Query both namespaces
+        # Query both maps and keywords namespaces
+        map_contexts = []
+        keyword_contexts = []
+        
+        # Try maps namespace first
         try:
-            # Try maps namespace first
             results = index.query(
                 vector=query_embedding,
                 top_k=8,
                 namespace="maps",
                 include_metadata=True
             )
-            contexts = [match.metadata.get("name", "") for match in results.matches if match.metadata]
-        except:
-            try:
-                # Try keywords namespace if maps fails
-                results = index.query(
-                    vector=query_embedding,
-                    top_k=8,
-                    namespace="keywords",
-                    include_metadata=True
-                )
-                contexts = [match.metadata.get("keyword", "") for match in results.matches if match.metadata]
-            except:
-                contexts = []
+            map_contexts = [
+                f"Business: {match.metadata.get('name', '')}, "
+                f"Location: {match.metadata.get('city', '')}, "
+                f"Rating: {match.metadata.get('rating', 'N/A')}"
+                for match in results.matches if match.metadata
+            ]
+        except Exception as e:
+            print(f"Error querying maps namespace: {str(e)}")
+        
+        # Then try keywords namespace
+        try:
+            results = index.query(
+                vector=query_embedding,
+                top_k=8,
+                namespace="keywords",
+                include_metadata=True
+            )
+            keyword_contexts = [
+                f"Keyword: {match.metadata.get('keyword', '')}, "
+                f"Search Volume: {match.metadata.get('search_volume', 'N/A')}, "
+                f"Period: {match.metadata.get('month', '')}/{match.metadata.get('year', '')}"
+                for match in results.matches if match.metadata
+            ]
+        except Exception as e:
+            print(f"Error querying keywords namespace: {str(e)}")
+        
+        # Combine contexts with appropriate labels
+        contexts = []
+        if map_contexts:
+            contexts.append("BUSINESS DATA:")
+            contexts.extend(map_contexts)
+        
+        if keyword_contexts:
+            if contexts:  # Add a separator if we already have business data
+                contexts.append("\n")
+            contexts.append("KEYWORD DATA:")
+            contexts.extend(keyword_contexts)
         
         # If we have contexts, use them to ground the answer
         if contexts:
@@ -55,6 +82,9 @@ def insight_question(question: str) -> str:
             {context_text}
             
             Please answer this question: {question}
+            
+            If the question is about search trends or keyword popularity, focus on the KEYWORD DATA.
+            If the question is about business locations or ratings, focus on the BUSINESS DATA.
             
             If the information provided doesn't address the question directly, 
             please say so and answer based only on what is available.
