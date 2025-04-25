@@ -5,9 +5,9 @@
 
 Changes vs. previous version
 ----------------------------
-1. System  few‑shot prompt ⇒ eliminates generic / competitor keywords.
+1. System  few‑shot prompt ⇒ eliminates generic / competitor keywords.
 2. Adds *city* parameter so local‑intent terms include the city.
-3. Filters out any keyword that doesn’t contain one of the business tokens.
+3. Filters out any keyword that doesn't contain one of the business tokens.
 4. Calls DataForSEO with `include_clickstream=True` for better long‑tail data.
 5. Keeps public function names so Streamlit UI and other imports stay intact.
 """
@@ -111,13 +111,9 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
     sys_prompt = _SYSTEM_PROMPT.replace("<CITY>", city)
     prefix = _FEW_SHOT + f"\n\nBusinesses (city = {city}):\n"
 
-for i in range(0, len(biz), _BATCH):
-    prompt = prefix + "\n".join(biz[i : i + _BATCH])
-
-
     kws: set[str] = set()
     for i in range(0, len(biz), _BATCH):
-        prompt = prefix  "\n".join(biz[i : i  _BATCH])
+        prompt = prefix + "\n".join(biz[i : i + _BATCH])
         rsp = _openai.chat.completions.create(
             model=_OPENAI_MODEL,
             temperature=0.2,
@@ -140,7 +136,7 @@ for i in range(0, len(biz), _BATCH):
 
 # ---------- get_search_volumes ----------------------------------------------
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
-    rows: list[Dict] = []                       # ← no leading space
+    rows: list[Dict] = []
 
     for blk in fetch_volume(
         keywords,
@@ -148,7 +144,7 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
         location_code=2840,
         language_code="en",
     ):
-        for item in blk.get("items", []):       # ← iterate over items
+        for item in blk.get("items", []):
             rows.append(
                 {
                     "keyword": blk["keyword"],
