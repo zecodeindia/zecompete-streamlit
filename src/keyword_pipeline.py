@@ -139,6 +139,7 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
     rows: list[Dict] = []
 
     # Debug the response structure first
+    print(f"Fetching search volume data for {len(keywords)} keywords...")
     results = fetch_volume(
         keywords,
         include_clickstream=True,
@@ -149,6 +150,12 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
     if not results:
         print("Warning: No results returned from fetch_volume")
         return pd.DataFrame(rows)
+    
+    print(f"Received {len(results)} blocks of data from fetch_volume")
+    
+    # Print the structure of the first result to help debug
+    if results:
+        print(f"Sample data structure: {results[0].keys()}")
         
     # Add defensive handling of response format
     for blk in results:
@@ -162,14 +169,35 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
         # Get items safely with fallback to empty list
         items = blk.get("items", [])
         
+        if not items:
+            print(f"Warning: No items found for keyword '{keyword}'")
+            continue
+            
+        print(f"Processing {len(items)} items for keyword '{keyword}'")
+        
         for item in items:
+            # Print a sample item structure to help debug
+            if items.index(item) == 0:
+                print(f"Sample item structure: {item.keys()}")
+                print(f"Sample item values: {item}")
+                
+            search_volume = item.get("search_volume", 0)
+            # Make sure search_volume is converted to int
+            if not isinstance(search_volume, int):
+                try:
+                    search_volume = int(search_volume)
+                except (ValueError, TypeError):
+                    print(f"Warning: Could not convert search_volume '{search_volume}' to int")
+                    search_volume = 0
+            
             rows.append({
                 "keyword": keyword,
                 "year": item.get("year", 0),
                 "month": item.get("month", 0),
-                "search_volume": item.get("search_volume", 0),
+                "search_volume": search_volume,
             })
 
+    print(f"Created DataFrame with {len(rows)} rows of search volume data")
     return pd.DataFrame(rows)
 
 
@@ -179,16 +207,43 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
 
 def run_keyword_pipeline(city: str = "General") -> bool:
     try:
+        # Initialize Pinecone
+        pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+        index = pc.Index("zecompete")
+        
+        # Clear existing keyword data
+        try:
+            print(f"Deleting existing keyword data from Pinecone namespace 'keywords'...")
+            index.delete(delete_all=True, namespace="keywords")
+            print("Successfully cleared previous keyword data")
+        except Exception as e:
+            print(f"Warning: Could not clear previous keyword data: {str(e)}")
+            
         names = _business_names_from_pinecone()
         if not names:
+            print("No business names found in Pinecone")
             return False
+        print(f"Found {len(names)} business names")
+        
         kws = generate_keywords_for_businesses(names, city)
         if not kws:
+            print("No keywords generated")
             return False
+        print(f"Generated {len(kws)} keywords")
+        
         df = get_search_volumes(kws)
         if df.empty:
+            print("No search volume data returned")
             return False
+        print(f"Got search volume data: {len(df)} rows")
+        
+        # Print some stats about the search volumes
+        if not df.empty:
+            print(f"Search volume stats: min={df['search_volume'].min()}, max={df['search_volume'].max()}, avg={df['search_volume'].mean()}")
+            print(f"Sample data: {df.head(5).to_dict()}")
+            
         upsert_keywords(df, city)
+        print("Successfully uploaded keyword data to Pinecone")
         return True
     except Exception:
         traceback.print_exc()
