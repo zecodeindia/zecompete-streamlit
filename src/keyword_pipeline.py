@@ -109,7 +109,11 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
     tokens = [_norm(n) for n in biz]
 
     sys_prompt = _SYSTEM_PROMPT.replace("<CITY>", city)
-    prefix = _FEW_SHOT  f"\n\nBusinesses (city = {city}):\n"
+    prefix = _FEW_SHOT + f"\n\nBusinesses (city = {city}):\n"
+
+for i in range(0, len(biz), _BATCH):
+    prompt = prefix + "\n".join(biz[i : i + _BATCH])
+
 
     kws: set[str] = set()
     for i in range(0, len(biz), _BATCH):
@@ -134,30 +138,17 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
 # Volume fetch
 # -----------------------------------------------------------------------------
 
+# ---------- get_search_volumes ----------------------------------------------
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
-     rows: list[Dict] = []
+    rows: list[Dict] = []                       # ← no leading space
+
     for blk in fetch_volume(
         keywords,
         include_clickstream=True,
         location_code=2840,
         language_code="en",
     ):
-        for m in blk.get("keyword_info", {}).get("monthly_searches", []):
-            rows.append(
-                {
-                    "keyword": blk["keyword"],
-                    "year": m["year"],
-                    "month": m["month"],
-                    "search_volume": m["search_volume"],
-                }
-            )
-    for blk in fetch_volume(
-        keywords,
-        include_clickstream=True,
-        location_code=2840,
-        language_code="en",
-    ):
-        for item in blk.get("items", []):
+        for item in blk.get("items", []):       # ← iterate over items
             rows.append(
                 {
                     "keyword": blk["keyword"],
@@ -166,7 +157,9 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
                     "search_volume": item["search_volume"],
                 }
             )
-     return pd.DataFrame(rows)
+
+    return pd.DataFrame(rows)
+
 
 # -----------------------------------------------------------------------------
 # Full pipeline (backward‑compatible)
