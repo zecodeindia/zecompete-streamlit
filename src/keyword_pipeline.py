@@ -138,21 +138,37 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
     rows: list[Dict] = []
 
-    for blk in fetch_volume(
+    # Debug the response structure first
+    results = fetch_volume(
         keywords,
         include_clickstream=True,
         location_code=2840,
         language_code="en",
-    ):
-        for item in blk.get("items", []):
-            rows.append(
-                {
-                    "keyword": blk["keyword"],
-                    "year": item["year"],
-                    "month": item["month"],
-                    "search_volume": item["search_volume"],
-                }
-            )
+    )
+    
+    if not results:
+        print("Warning: No results returned from fetch_volume")
+        return pd.DataFrame(rows)
+        
+    # Add defensive handling of response format
+    for blk in results:
+        # Check if expected keys exist
+        if "keyword" not in blk:
+            print(f"Warning: 'keyword' not found in data block. Available keys: {blk.keys()}")
+            keyword = "unknown"  # Set default if not present
+        else:
+            keyword = blk["keyword"]
+            
+        # Get items safely with fallback to empty list
+        items = blk.get("items", [])
+        
+        for item in items:
+            rows.append({
+                "keyword": keyword,
+                "year": item.get("year", 0),
+                "month": item.get("month", 0),
+                "search_volume": item.get("search_volume", 0),
+            })
 
     return pd.DataFrame(rows)
 
