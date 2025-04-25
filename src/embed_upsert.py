@@ -1,253 +1,142 @@
-# =============================================================================
-# keyword_pipeline.py  –  Revised 25-Apr-2025
-# =============================================================================
-"""Keyword generation and volume-enrichment pipeline.
-
-Changes vs. previous version
-----------------------------
-1. System  few‑shot prompt ⇒ eliminates generic / competitor keywords.
-2. Adds *city* parameter so local‑intent terms include the city.
-3. Filters out any keyword that doesn't contain one of the business tokens.
-4. Calls DataForSEO with `include_clickstream=True` for better long‑tail data.
-5. Keeps public function names so Streamlit UI and other imports stay intact.
-"""
-
-from __future__ import annotations
-
-import re
-import traceback
-import unicodedata
-from typing import Iterable, List, Dict
-
+from typing import Iterable, Dict, List
+from pinecone import Pinecone  # Updated import
 import pandas as pd
 from openai import OpenAI
-from pinecone import Pinecone
-
 from src.config import secret
-from src.fetch_volume import fetch_volume
-from src.embed_upsert import upsert_keywords
 
-# ------------------------------------------------------------------
-# PUBLIC API – keep the names other modules expect
-# ------------------------------------------------------------------
-def get_business_names_from_pinecone(*args, **kwargs):
-     """Legacy alias – importers still use this name."""
-     return _business_names_from_pinecone(*args, **kwargs)
-# -----------------------------------------------------------------------------
-# OpenAI client & prompt templates
-# -----------------------------------------------------------------------------
-_OPENAI_MODEL = "gpt-4o-mini"
-_openai = OpenAI(api_key=secret("OPENAI_API_KEY"))
+# Updated Pinecone initialization
+pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+INDEX = pc.Index("zecompete")
 
-_SYSTEM_PROMPT = (
-    "You are a Local‑SEO assistant.\n"
-    "For EACH business name you receive, output EXACTLY 3 real Google search "
-    "queries that someone in <CITY> would type to find THAT store.\n\n"
-    "Rules:\n"
-    "1. Each query MUST contain the business name (or unique part of it).\n"
-    "2. Add local‑intent words like 'near me', 'in <CITY>', 'address', "
-    "   'timings', or 'phone number'.\n"
-    "3. No generic queries unless they include the business name.\n"
-    "4. Format: one line per business, pipe‑separated, exactly 3 queries."
-)
+client = OpenAI(api_key=secret("OPENAI_API_KEY"))
+EMBED_MODEL = "text-embedding-3-small"  # 1536‑dim
 
-_FEW_SHOT = (
-    "Input: ZECODE HSR Layout\n"
-    "Output: ZECODE HSR Layout address | ZECODE store HSR Layout near me | "
-    "ZECODE HSR Layout timings\n\n"
-    "Input: ZECODE Indiranagar\n"
-    "Output: ZECODE Indiranagar location | ZECODE store Indiranagar | "
-    "ZECODE Indiranagar phone number"
-)
+# --- helpers -----------------------------------------------------
+def _embed(texts: List[str]) -> List[List[float]]:
+    res = client.embeddings.create(model=EMBED_MODEL, input=texts)
+    return [d.embedding for d in res.data]
 
-_BATCH = 10
-
-# -----------------------------------------------------------------------------
-# Helper: fetch business names from Pinecone (unchanged signature)
-# -----------------------------------------------------------------------------
-
-def _business_names_from_pinecone(index_name: str = "zecompete") -> List[str]:
-    pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
-    index = pc.Index(index_name)
-
-    stats = index.describe_index_stats()
-    dimension = 1536
-    dummy = [0.0] * dimension
-    namespaces = [ns for ns in stats.get("namespaces", {}) if ns != "keywords"] or [""]
-
-    names: set[str] = set()
-    for ns in namespaces:
-        try:
-            res = index.query(vector=dummy, top_k=100, include_metadata=True, namespace=ns or None)
-            for m in res.matches:
-                md = m.metadata or {}
-                for fld in ("name", "title", "business_name", "brand", "company"):
-                    if md.get(fld):
-                        names.add(str(md[fld]))
-                        break
-        except Exception:
-            traceback.print_exc()
-    return sorted(names)
-    
-# -- Back-compat ----------------------------------------------------------------
-# export an alias so old code `from src.keyword_pipeline import get_business_names_from_pinecone`
-# still works without edits.
-get_business_names_from_pinecone = _business_names_from_pinecone
-
-# -----------------------------------------------------------------------------
-# Keyword generation
-# -----------------------------------------------------------------------------
-
-def _norm(txt: str) -> str:
-    return unicodedata.normalize("NFKD", re.sub(r"\W", "", txt.lower()))
-
-
-def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -> List[str]:
-    biz = list(dict.fromkeys(business_names))  # preserve order
-    if not biz:
-        return []
-    tokens = [_norm(n) for n in biz]
-
-    sys_prompt = _SYSTEM_PROMPT.replace("<CITY>", city)
-    prefix = _FEW_SHOT + f"\n\nBusinesses (city = {city}):\n"
-
-    kws: set[str] = set()
-    for i in range(0, len(biz), _BATCH):
-        prompt = prefix + "\n".join(biz[i : i + _BATCH])
-        rsp = _openai.chat.completions.create(
-            model=_OPENAI_MODEL,
-            temperature=0.2,
-            top_p=0.8,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        for line in rsp.choices[0].message.content.strip().splitlines():
-            kws.update([p.strip() for p in line.split("|") if p.strip()])
-
-    # post‑filter
-    final = [kw for kw in kws if any(t in _norm(kw) for t in tokens)]
-    return sorted(final)
-
-# -----------------------------------------------------------------------------
-# Volume fetch
-# -----------------------------------------------------------------------------
-
-# ---------- get_search_volumes ----------------------------------------------
-def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
-    rows: list[Dict] = []
-
-    # Debug the response structure first
-    print(f"Fetching search volume data for {len(keywords)} keywords...")
-    results = fetch_volume(
-        keywords,
-        include_clickstream=True,
-        location_code=2840,
-        language_code="en",
-    )
-    
-    if not results:
-        print("Warning: No results returned from fetch_volume")
-        return pd.DataFrame(rows)
-    
-    print(f"Received {len(results)} blocks of data from fetch_volume")
-    
-    # Print the structure of the first result to help debug
-    if results:
-        print(f"Sample data structure: {results[0].keys()}")
-        
-    # Add defensive handling of response format
-    for blk in results:
-        # Check if expected keys exist
-        if "keyword" not in blk:
-            print(f"Warning: 'keyword' not found in data block. Available keys: {blk.keys()}")
-            keyword = "unknown"  # Set default if not present
-        else:
-            keyword = blk["keyword"]
-            
-        # Get items safely with fallback to empty list
-        items = blk.get("items", [])
-        
-        if not items:
-            print(f"Warning: No items found for keyword '{keyword}'")
-            continue
-            
-        print(f"Processing {len(items)} items for keyword '{keyword}'")
-        
-        for item in items:
-            # Print a sample item structure to help debug
-            if items.index(item) == 0:
-                print(f"Sample item structure: {item.keys()}")
-                print(f"Sample item values: {item}")
-                
-            search_volume = item.get("search_volume", 0)
-            # Make sure search_volume is converted to int
-            if not isinstance(search_volume, int):
-                try:
-                    search_volume = int(search_volume)
-                except (ValueError, TypeError):
-                    print(f"Warning: Could not convert search_volume '{search_volume}' to int")
-                    search_volume = 0
-            
-            rows.append({
-                "keyword": keyword,
-                "year": item.get("year", 0),
-                "month": item.get("month", 0),
-                "search_volume": search_volume,
-            })
-
-    print(f"Created DataFrame with {len(rows)} rows of search volume data")
-    return pd.DataFrame(rows)
-
-
-# -----------------------------------------------------------------------------
-# Full pipeline (backward‑compatible)
-# -----------------------------------------------------------------------------
-
-def run_keyword_pipeline(city: str = "General") -> bool:
+def upsert_places(df: pd.DataFrame, brand: str, city: str) -> None:
+    # First, clear existing data for this brand and city
     try:
-        # Initialize Pinecone
-        pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
-        index = pc.Index("zecompete")
+        print(f"Clearing existing data for {brand} in {city} from Pinecone...")
         
-        # Clear existing keyword data
+        # Option 1: Delete all data in the maps namespace (most aggressive)
+        INDEX.delete(delete_all=True, namespace="maps")
+        
+        # Option 2: Delete data with specific IDs (more targeted)
+        # This is commented out as Option 1 is used for a clean slate
+        # ids_to_delete = [f"place-{brand}-{city}-{i}" for i in range(100)]  # Adjust range as needed
+        # if ids_to_delete:
+        #     INDEX.delete(ids=ids_to_delete, namespace="maps")
+        
+        print(f"Successfully cleared previous data for {brand} in {city}")
+    except Exception as e:
+        print(f"Warning: Could not clear previous data: {str(e)}")
+    
+    # Check if 'name' exists or try alternative column names
+    if 'name' in df.columns:
+        name_column = 'name'
+    elif 'title' in df.columns:
+        name_column = 'title'
+    else:
+        # If neither exists, create a placeholder
+        df['name'] = f"{brand} location in {city}"
+        name_column = 'name'
+    
+    print(f"Using column '{name_column}' for place names")
+    vecs = _embed(df[name_column].tolist())
+    
+    # Create records with flexible field mapping
+    records = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        # Create a unique ID even if placeId is missing
+        if 'placeId' in row:
+            record_id = f"place-{row['placeId']}"
+        else:
+            record_id = f"place-{brand}-{city}-{i}"
+            
+        # Create metadata with required fields
+        metadata = {
+            "brand": brand,
+            "city": city,
+            "name": row[name_column]
+        }
+        
+        # Add optional fields if available
         try:
-            print(f"Deleting existing keyword data from Pinecone namespace 'keywords'...")
-            index.delete(delete_all=True, namespace="keywords")
-            print("Successfully cleared previous keyword data")
-        except Exception as e:
-            print(f"Warning: Could not clear previous keyword data: {str(e)}")
+            if 'totalScore' in row and pd.notna(row['totalScore']):
+                metadata["rating"] = float(row['totalScore'])
+            elif 'rating' in row and pd.notna(row['rating']):
+                metadata["rating"] = float(row['rating'])
+        except:
+            pass
             
-        names = _business_names_from_pinecone()
-        if not names:
-            print("No business names found in Pinecone")
-            return False
-        print(f"Found {len(names)} business names")
-        
-        kws = generate_keywords_for_businesses(names, city)
-        if not kws:
-            print("No keywords generated")
-            return False
-        print(f"Generated {len(kws)} keywords")
-        
-        df = get_search_volumes(kws)
-        if df.empty:
-            print("No search volume data returned")
-            return False
-        print(f"Got search volume data: {len(df)} rows")
-        
-        # Print some stats about the search volumes
-        if not df.empty:
-            print(f"Search volume stats: min={df['search_volume'].min()}, max={df['search_volume'].max()}, avg={df['search_volume'].mean()}")
-            print(f"Sample data: {df.head(5).to_dict()}")
+        try:
+            if 'reviewsCount' in row and pd.notna(row['reviewsCount']):
+                metadata["reviews"] = int(row['reviewsCount'])
+            elif 'reviews' in row and pd.notna(row['reviews']):
+                metadata["reviews"] = int(row['reviews'])
+        except:
+            pass
             
-        upsert_keywords(df, city)
-        print("Successfully uploaded keyword data to Pinecone")
-        return True
-    except Exception:
-        traceback.print_exc()
-        return False
+        try:
+            if 'gpsCoordinates' in row and isinstance(row['gpsCoordinates'], dict):
+                if 'lat' in row['gpsCoordinates'] and 'lng' in row['gpsCoordinates']:
+                    metadata["lat"] = row['gpsCoordinates']['lat']
+                    metadata["lng"] = row['gpsCoordinates']['lng']
+            elif all(coord in row for coord in ['latitude', 'longitude']):
+                metadata["lat"] = row['latitude']
+                metadata["lng"] = row['longitude']
+        except:
+            pass
+            
+        records.append((record_id, vecs[i], metadata))
+    
+    # Upsert to Pinecone
+    if records:
+        INDEX.upsert(vectors=records, namespace="maps")
+        print(f"Successfully upserted {len(records)} records to Pinecone")
+    else:
+        print(f"Warning: No records to upsert for {brand} in {city}")
 
-if __name__ == "__main__":
-    run_keyword_pipeline("Bengaluru")
+def upsert_keywords(df: pd.DataFrame, city: str) -> None:
+    # First, clear existing keyword data
+    try:
+        print(f"Clearing existing keyword data for {city} from Pinecone...")
+        
+        # Delete all data in the keywords namespace
+        INDEX.delete(delete_all=True, namespace="keywords")
+        
+        print(f"Successfully cleared previous keyword data for {city}")
+    except Exception as e:
+        print(f"Warning: Could not clear previous keyword data: {str(e)}")
+    
+    # df: keyword, year, month, search_volume
+    unique = df["keyword"].unique().tolist()
+    print(f"Generating embeddings for {len(unique)} unique keywords...")
+    vecs = _embed(unique)
+    vec_map = dict(zip(unique, vecs))
+    
+    try:
+        records = [
+            (f"kw-{row.keyword}-{row.year}{row.month:02}",
+             vec_map[row.keyword],
+             {"keyword": row.keyword,
+              "year": int(row.year), 
+              "month": int(row.month),
+              "search_volume": int(row.search_volume),
+              "city": city})
+            for row in df.itertuples(index=False)
+            if row.keyword in vec_map  # Safety check
+        ]
+        
+        print(f"Created {len(records)} keyword records for upsert")
+        
+        if records:
+            INDEX.upsert(vectors=records, namespace="keywords")
+            print(f"Successfully upserted {len(records)} keyword records to Pinecone")
+        else:
+            print("Warning: No keyword records to upsert")
+    except Exception as e:
+        print(f"Error in upsert_keywords: {str(e)}")
