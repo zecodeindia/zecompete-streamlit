@@ -39,6 +39,9 @@ try:
     from src.task_manager import add_task, process_all_tasks, get_running_tasks, get_pending_tasks
     from src.webhook_handler import get_webhook_secret, process_dataset_directly, create_apify_webhook
     
+    # Import keyword pipeline module
+    from src.keyword_pipeline import run_keyword_pipeline, get_business_names_from_pinecone
+    
     import_success = True
     st.success("✅ Successfully imported all modules!")
 except Exception as e:
@@ -46,7 +49,7 @@ except Exception as e:
     import_success = False
 
 # Define tabs
-tabs = st.tabs(["Run Analysis", "Auto Integration", "Manual Upload", "Ask Questions", "Explore Data", "Diagnostic"])
+tabs = st.tabs(["Run Analysis", "Auto Integration", "Keywords & Search Volume", "Manual Upload", "Ask Questions", "Explore Data", "Diagnostic"])
 
 # Tab 1: Run Analysis
 with tabs[0]:
@@ -246,8 +249,113 @@ with tabs[1]:
     3. Use the forwarding URL when creating the webhook in Apify
     """)
 
-# Tab 3: Manual Upload
+# Tab 3: Keywords & Search Volume
 with tabs[2]:
+    st.header("Keywords & Search Volume Analysis")
+    st.markdown("""
+    This tab helps you generate relevant keywords based on business names in your Pinecone index,
+    fetch search volume data from DataForSEO, and store everything back in Pinecone.
+    """)
+    
+    # Option to specify city for the keywords
+    city = st.text_input("City for keyword data", "General")
+    
+    # Display business count
+    if st.button("Check Business Names"):
+        with st.spinner("Retrieving business names from Pinecone..."):
+            try:
+                business_names = get_business_names_from_pinecone()
+                if business_names:
+                    st.success(f"✅ Found {len(business_names)} unique business names in Pinecone")
+                    # Show sample of business names
+                    st.write("Sample business names:")
+                    st.write(", ".join(business_names[:10]))
+                    if len(business_names) > 10:
+                        st.write(f"...and {len(business_names) - 10} more")
+                else:
+                    st.warning("No business names found in Pinecone. Please upload business data first.")
+            except Exception as e:
+                st.error(f"Error retrieving business names: {str(e)}")
+    
+    # Generate keywords and get search volume
+    if st.button("Generate Keywords & Get Search Volume"):
+        with st.spinner("Running keyword pipeline..."):
+            try:
+                success = run_keyword_pipeline(city)
+                if success:
+                    st.success("✅ Successfully generated keywords and retrieved search volume data")
+                    
+                    # Show the new data in Pinecone
+                    try:
+                        # Check for the keywords namespace
+                        stats = idx.describe_index_stats()
+                        namespaces = stats.get("namespaces", {})
+                        
+                        if "keywords" in namespaces:
+                            count = namespaces["keywords"].get("vector_count", 0)
+                            st.write(f"You now have {count} keyword vectors in the 'keywords' namespace")
+                            
+                            # Show sample keywords
+                            dummy_vector = [0] * stats.get("dimension", 1536)
+                            results = idx.query(
+                                vector=dummy_vector,
+                                top_k=5,
+                                namespace="keywords",
+                                include_metadata=True
+                            )
+                            
+                            if results.matches:
+                                st.write("Sample keywords:")
+                                keyword_data = []
+                                for match in results.matches:
+                                    if match.metadata:
+                                        keyword_data.append(match.metadata)
+                                
+                                if keyword_data:
+                                    kw_df = pd.DataFrame(keyword_data)
+                                    st.dataframe(kw_df)
+                    except Exception as e:
+                        st.error(f"Error displaying keyword data: {str(e)}")
+                else:
+                    st.error("❌ Keyword pipeline failed. Check the logs for details.")
+            except Exception as e:
+                st.error(f"Error running keyword pipeline: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
+    
+    # Add explanation of the process
+    st.markdown("""
+    ### How It Works
+    
+    1. **Extract Business Names**: We query your Pinecone index to retrieve all business names from the "maps" namespace.
+    
+    2. **Generate Keywords**: We use OpenAI to generate relevant search terms based on the business names.
+    
+    3. **Get Search Volume**: We fetch search volume data for these keywords from DataForSEO.
+    
+    4. **Store in Pinecone**: We embed the keywords and store them with their search volume data in the "keywords" namespace.
+    
+    This data can then be used to understand search demand and trends related to the businesses in your index.
+    """)
+    
+    # Add information about how to use this data
+    st.markdown("""
+    ### Using Keyword Data
+    
+    You can access this keyword data in several ways:
+    
+    1. Use the "Explore Data" tab to see all keywords and their search volumes.
+    
+    2. Ask questions about search trends in the "Ask Questions" tab, such as:
+       - "Which keywords have the highest search volume?"
+       - "What are the trending search terms for clothing stores?"
+       - "Compare search volumes for different retail brands"
+    
+    3. Create custom analyses by exporting the data and using your preferred analytics tools.
+    """)
+
+# Tab 4: Manual Upload
+with tabs[3]:
     st.header("Upload Apify CSV (Optional)")
     uploaded_file = st.file_uploader("Upload the Apify CSV file", type="csv")
 
@@ -285,8 +393,8 @@ with tabs[2]:
             else:
                 st.error("Cannot upload to Pinecone due to connection or import issues")
 
-# Tab 4: Ask Questions
-with tabs[3]:
+# Tab 5: Ask Questions
+with tabs[4]:
     st.header("Ask Questions About Your Data")
     q = st.text_area("Enter your question about the competitor data")
     if st.button("Answer", key="answer_button") and q:
@@ -297,8 +405,8 @@ with tabs[3]:
             st.error(f"Error: {str(e)}")
             st.write("Please try a simpler question or check the Diagnostic tab to verify data exists.")
 
-# Tab 5: Explore Data
-with tabs[4]:
+# Tab 6: Explore Data
+with tabs[5]:
     st.header("Explore Stored Data")
     try:
         res = idx.describe_index_stats()
@@ -376,8 +484,8 @@ with tabs[4]:
     except Exception as e:
         st.error(f"Error fetching index stats: {str(e)}")
 
-# Tab 6: Diagnostic 
-with tabs[5]:
+# Tab 7: Diagnostic 
+with tabs[6]:
     st.subheader("Diagnostic Information")
     
     # Check namespaces and count
