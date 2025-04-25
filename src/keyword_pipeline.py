@@ -70,6 +70,14 @@ def _business_names_from_pinecone(index_name: str = "zecompete") -> List[str]:
     pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
     index = pc.Index(index_name)
 
+    # First, clear the keywords namespace to ensure we don't have old data
+    try:
+        print("Clearing any existing keyword data...")
+        index.delete(delete_all=True, namespace="keywords")
+        print("Keywords namespace cleared")
+    except Exception as e:
+        print(f"Warning: Could not clear keywords namespace: {str(e)}")
+
     stats = index.describe_index_stats()
     dimension = 1536
     dummy = [0.0] * dimension
@@ -204,6 +212,7 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
 # -----------------------------------------------------------------------------
 # Full pipeline (backward‑compatible)
 # -----------------------------------------------------------------------------
+
 def run_keyword_pipeline(city: str = "General") -> bool:
     try:
         # Initialize Pinecone
@@ -217,7 +226,8 @@ def run_keyword_pipeline(city: str = "General") -> bool:
             print("Successfully cleared previous keyword data")
         except Exception as e:
             print(f"Warning: Could not clear previous keyword data: {str(e)}")
-            
+        
+        # Add detailed debugging
         names = _business_names_from_pinecone()
         if not names:
             print("No business names found in Pinecone")
@@ -285,3 +295,6 @@ def run_keyword_pipeline(city: str = "General") -> bool:
         print(f"Error in run_keyword_pipeline: {str(e)}")
         traceback.print_exc()
         return False
+
+if __name__ == "__main__":
+    run_keyword_pipeline("Bengaluru")
