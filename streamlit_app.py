@@ -1,8 +1,7 @@
 import os, itertools, pandas as pd, streamlit as st
-import time, json, threading, requests
+import time, json, threading, requests, secrets
 from pinecone import Pinecone
 from openai import OpenAI
-import secrets
 
 # Set up the app
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
@@ -23,6 +22,20 @@ try:
     from src.config import secret
     pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
     idx = pc.Index("zecompete")
+    
+    # Add a data clearing button at the top of the app
+    if st.button("🔄 Clear ALL Data from Pinecone", type="primary"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                # Clear maps namespace
+                idx.delete(delete_all=True, namespace="maps")
+                # Clear keywords namespace
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+                st.experimental_rerun()  # Rerun the app to reflect the cleared data
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
+
     pinecone_success = True
     st.success("✅ Successfully connected to Pinecone!")
 except Exception as e:
@@ -68,6 +81,20 @@ tabs = st.tabs(["Run Analysis", "Auto Integration", "Keywords & Search Volume", 
 with tabs[0]:
     st.header("Run Analysis")
     
+    # Add another clear data button specific to this tab
+    if st.button("🔄 Clear Previous Data", key="clear_tab_data"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                # Clear maps namespace
+                idx.delete(delete_all=True, namespace="maps")
+                # Clear keywords namespace
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+                # Force cache clear
+                st.cache_data.clear()
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
+    
     # Standard interface for brand/city search
     brands = st.text_input("Brands (comma)", "Zudio, Max Fashion, Zara, H&M, Trends")
     cities = st.text_input("Cities (comma)", "Bengaluru, Hyderabad")
@@ -78,6 +105,15 @@ with tabs[0]:
         if st.button("Run Manual Pipeline", key="run_manual"):
             log_container = st.container()
             log_container.subheader("Processing Logs")
+            
+            # Clear existing data first
+            log_container.write("Clearing existing data from Pinecone...")
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                log_container.write("✅ Previous data cleared successfully")
+            except Exception as e:
+                log_container.error(f"❌ Error clearing data: {str(e)}")
             
             st.info("Note: If Google Maps data can't be accessed via Apify, the app will create sample data to demonstrate functionality.")
             
@@ -92,6 +128,9 @@ with tabs[0]:
                     log_container.error(f"❌ Error processing {b} in {c}: {str(e)}")
             
             st.success("Data ready!")
+            # Force cache clear and rerun
+            st.cache_data.clear()
+            st.experimental_rerun()
     
     with col2:
         # Option to run with Apify automation
@@ -100,6 +139,15 @@ with tabs[0]:
         if st.button("Run with Apify (Automated)", key="run_automated"):
             log_container = st.container()
             log_container.subheader("Automated Processing Logs")
+            
+            # Clear existing data first
+            log_container.write("Clearing existing data from Pinecone...")
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                log_container.write("✅ Previous data cleared successfully")
+            except Exception as e:
+                log_container.error(f"❌ Error clearing data: {str(e)}")
             
             # Enable auto-refresh to check for task completion
             st.session_state.auto_refresh = True
@@ -132,7 +180,7 @@ with tabs[0]:
         # Show a toggle to disable auto-refresh
         if st.button("Disable Auto-Refresh"):
             st.session_state.auto_refresh = False
-            st.rerun()  # Use st.rerun() instead of experimental_rerun
+            st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
         
         # Check if we should refresh
         current_time = time.time()
@@ -171,7 +219,7 @@ with tabs[0]:
             refresh_placeholder.info(f"Auto-refreshing in {remaining} seconds... Click 'Disable Auto-Refresh' to stop.")
             # Add a manual refresh button
             if st.button("Refresh Now"):
-                st.rerun()  # Use st.rerun() instead of experimental_rerun
+                st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
 
 # Tab 2: Auto Integration
 with tabs[1]:
@@ -181,6 +229,16 @@ with tabs[1]:
     1. **Webhook Integration** - Automatically process data when Apify tasks complete
     2. **Direct Dataset Processing** - Manually trigger processing for specific Apify datasets
     """)
+    
+    # Add clear button
+    if st.button("🔄 Clear Previous Data", key="clear_auto_tab"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
     
     # Webhook integration section
     st.subheader("Webhook Integration")
@@ -239,6 +297,14 @@ with tabs[1]:
     
     if st.button("Process Dataset") and dataset_id:
         with st.spinner(f"Processing dataset {dataset_id}..."):
+            # Clear existing data first
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords") 
+                st.write("✅ Previous data cleared successfully")
+            except Exception as e:
+                st.error(f"❌ Error clearing data: {str(e)}")
+                
             success = process_dataset_directly(dataset_id, brand, city)
             
             if success:
@@ -270,6 +336,19 @@ with tabs[2]:
     fetch search volume data from DataForSEO, and store everything back in Pinecone.
     """)
     
+    # Add clear button
+    if st.button("🔄 Clear Previous Data", key="clear_kw_tab"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+                # Force refresh
+                st.cache_data.clear()
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
+    
     # Option to specify city for the keywords
     city = st.text_input("City for keyword data", "General")
     
@@ -277,6 +356,10 @@ with tabs[2]:
     if st.button("Check Business Names"):
         with st.spinner("Retrieving business names from Pinecone..."):
             try:
+                # Clear keywords first
+                idx.delete(delete_all=True, namespace="keywords")
+                st.write("✅ Cleared previous keyword data")
+                
                 business_names = get_business_names_from_pinecone()
                 if business_names:
                     st.success(f"✅ Found {len(business_names)} unique business names in Pinecone")
@@ -294,6 +377,10 @@ with tabs[2]:
     if st.button("Generate Keywords & Get Search Volume"):
         with st.spinner("Running keyword pipeline..."):
             try:
+                # Clear keywords first
+                idx.delete(delete_all=True, namespace="keywords")
+                st.write("✅ Cleared previous keyword data")
+                
                 success = run_keyword_pipeline(city)
                 if success:
                     st.success("✅ Successfully generated keywords and retrieved search volume data")
@@ -370,6 +457,17 @@ with tabs[2]:
 # Tab 4: Manual Upload
 with tabs[3]:
     st.header("Upload Apify CSV (Optional)")
+    
+    # Add clear button
+    if st.button("🔄 Clear Previous Data", key="clear_upload_tab"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
+                
     uploaded_file = st.file_uploader("Upload the Apify CSV file", type="csv")
 
     if uploaded_file is not None:
@@ -385,6 +483,12 @@ with tabs[3]:
         if st.button("Upload CSV data to Pinecone"):
             if pinecone_success and import_success:
                 try:
+                    # Clear existing data first
+                    st.write("Clearing previous data...")
+                    idx.delete(delete_all=True, namespace="maps")
+                    idx.delete(delete_all=True, namespace="keywords")
+                    st.write("✅ Previous data cleared successfully")
+                    
                     # Extract brand from searchString if available
                     if 'searchString' in df.columns:
                         brand = df['searchString'].iloc[0] if not df.empty else "Unknown"
@@ -401,6 +505,9 @@ with tabs[3]:
                     # Generate embeddings and upload to Pinecone
                     upsert_places(df, brand, city)
                     st.success("✅ CSV data uploaded to Pinecone successfully!")
+                    # Force refresh
+                    st.cache_data.clear()
+                    st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error uploading to Pinecone: {str(e)}")
             else:
@@ -409,6 +516,10 @@ with tabs[3]:
 # Tab 5: Ask Questions
 with tabs[4]:
     st.header("Ask Questions About Your Data")
+    
+    # Add refresh data notice
+    st.info("⚠️ Make sure you have run the data collection process or check the 'Explore Data' tab to verify you have data to query.")
+    
     q = st.text_area("Enter your question about the competitor data")
     if st.button("Answer", key="answer_button") and q:
         try:
@@ -421,6 +532,12 @@ with tabs[4]:
 # Tab 6: Explore Data
 with tabs[5]:
     st.header("Explore Stored Data")
+    
+    # Add refresh button
+    if st.button("🔄 Refresh Data View", key="refresh_explore"):
+        st.cache_data.clear()
+        st.experimental_rerun()
+        
     try:
         res = idx.describe_index_stats()
         
@@ -486,20 +603,37 @@ with tabs[5]:
                                 st.success(f"Successfully deleted namespace '{ns_name}'")
                                 
                                 # Refresh the page to show updated stats
-                                st.rerun()  # Use st.rerun() instead of experimental_rerun
+                                st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
                         except Exception as e:
                             st.error(f"Error deleting namespace {ns_name}: {str(e)}")
                 
                 # Add a divider between namespaces
                 st.markdown("---")
         else:
-            st.write("No namespaces found")
+            st.warning("No namespaces found - you may need to run data collection first.")
     except Exception as e:
         st.error(f"Error fetching index stats: {str(e)}")
 
 # Tab 7: Diagnostic 
 with tabs[6]:
     st.subheader("Diagnostic Information")
+    
+    # Add clear button
+    if st.button("🔄 Clear All Data", key="clear_diagnostic"):
+        with st.spinner("Clearing all data from Pinecone..."):
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ All data cleared from Pinecone successfully!")
+                st.cache_data.clear()
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Error clearing data: {str(e)}")
+    
+    # Add refresh button
+    if st.button("🔄 Refresh Diagnostic Data", key="refresh_diagnostic"):
+        st.cache_data.clear()
+        st.experimental_rerun()
     
     # Check namespaces and count
     try:
@@ -577,115 +711,4 @@ with tabs[6]:
                 resp2 = requests.get(url, headers=headers)
                 st.write(f"Response status: {resp2.status_code}")
                 
-                # Use the successful response or show both errors
-                if resp1.status_code == 200:
-                    data = resp1.json()
-                    st.success("✅ Successfully connected to Apify API using query parameter")
-                    st.write("User info:")
-                    st.json(data)
-                elif resp2.status_code == 200:
-                    data = resp2.json()
-                    st.success("✅ Successfully connected to Apify API using Bearer token")
-                    st.write("User info:")
-                    st.json(data)
-                else:
-                    st.error("❌ Failed to connect to Apify API with both authentication methods")
-                    st.write("Query parameter response:")
-                    st.text(resp1.text)
-                    st.write("Bearer token response:")
-                    st.text(resp2.text)
-                    
-                # Now test the specific task
-                task_id = "zecodemedia~google-maps-scraper-task"
-                task_url = f"https://api.apify.com/v2/actor-tasks/{task_id}"
-                
-                st.write(f"Testing access to task: {task_id}")
-                
-                # Try both authentication methods
-                st.write("Testing task access with query parameter...")
-                task_resp1 = requests.get(task_url, params=params)
-                st.write(f"Response status: {task_resp1.status_code}")
-                
-                st.write("Testing task access with Bearer token...")
-                task_resp2 = requests.get(task_url, headers=headers)
-                st.write(f"Response status: {task_resp2.status_code}")
-                
-                # Use the successful response or show both errors
-                if task_resp1.status_code == 200:
-                    task_data = task_resp1.json()
-                    st.success(f"✅ Successfully accessed task using query parameter")
-                    st.write("Task info:")
-                    st.json(task_data)
-                elif task_resp2.status_code == 200:
-                    task_data = task_resp2.json()
-                    st.success(f"✅ Successfully accessed task using Bearer token")
-                    st.write("Task info:")
-                    st.json(task_data)
-                else:
-                    st.error(f"❌ Failed to access task with both authentication methods")
-                    st.write("Query parameter response:")
-                    st.text(task_resp1.text)
-                    st.write("Bearer token response:")
-                    st.text(task_resp2.text)
-                    
-        except Exception as e:
-            st.error(f"Error during Apify testing: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-
-    st.markdown("---")
-    st.subheader("Test Direct Apify Task Run")
-
-    test_brand = st.text_input("Test brand name", "Zara")
-    test_city = st.text_input("Test city", "Bengaluru")
-
-    if st.button("Run Test Task"):
-        try:
-            from src.scrape_maps import run_apify_task
-            
-            with st.spinner("Running test Apify task..."):
-                run_id, results = run_apify_task(test_brand, test_city, wait=True)
-                
-            if run_id:
-                st.success(f"✅ Successfully started task with run ID: {run_id}")
-                
-                if results:
-                    st.success(f"✅ Task completed and returned {len(results)} results")
-                    st.write("First result:")
-                    st.json(results[0])
-                else:
-                    st.warning("⚠️ Task started but did not return results (it might still be running)")
-            else:
-                st.error("❌ Failed to start task")
-                
-        except Exception as e:
-            st.error(f"Error running test task: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-
-# Add a webhook handler route
-# Since Streamlit doesn't support real routes, this is a workaround
-st.markdown("---")
-st.write("### Webhook Handler")
-st.write("This section handles webhook callbacks from Apify (for demonstration purposes).")
-
-webhook_data = st.text_area("For testing, paste webhook JSON payload here:", "", key="webhook_payload")
-
-if st.button("Process Webhook Payload") and webhook_data:
-    try:
-        payload = json.loads(webhook_data)
-        from src.webhook_handler import handle_webhook_payload
-        
-        success = handle_webhook_payload(payload)
-        if success:
-            st.success("✅ Webhook processed successfully")
-        else:
-            st.error("❌ Webhook processing failed")
-    except json.JSONDecodeError:
-        st.error("Invalid JSON payload")
-    except Exception as e:
-        st.error(f"Error processing webhook: {str(e)}")
-
-# Footer
-st.markdown("---")
-st.write("© 2025 Zecode - Competitor Location & Demand Explorer")
+                # Use the successful response or show both
