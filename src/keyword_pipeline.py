@@ -82,6 +82,11 @@ def _business_names_from_pinecone(index_name: str = "zecompete") -> List[str]:
         except Exception:
             traceback.print_exc()
     return sorted(names)
+    
+# -- Back-compat ----------------------------------------------------------------
+# export an alias so old code `from src.keyword_pipeline import get_business_names_from_pinecone`
+# still works without edits.
+get_business_names_from_pinecone = _business_names_from_pinecone
 
 # -----------------------------------------------------------------------------
 # Keyword generation
