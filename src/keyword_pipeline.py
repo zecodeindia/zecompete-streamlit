@@ -27,6 +27,12 @@ from src.config import secret
 from src.fetch_volume import fetch_volume
 from src.embed_upsert import upsert_keywords
 
+# ------------------------------------------------------------------
+# PUBLIC API – keep the names other modules expect
+# ------------------------------------------------------------------
+def get_business_names_from_pinecone(*args, **kwargs):
+     """Legacy alias – importers still use this name."""
+     return _business_names_from_pinecone(*args, **kwargs)
 # -----------------------------------------------------------------------------
 # OpenAI client & prompt templates
 # -----------------------------------------------------------------------------
@@ -129,16 +135,39 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
 # -----------------------------------------------------------------------------
 
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
-    rows: list[Dict] = []
-    for blk in fetch_volume(keywords, include_clickstream=True, location_code=2840, language_code="en"):
-        for m in blk.get("keyword_info", {}).get("monthly_searches", []):
-            rows.append({
-                "keyword": blk["keyword"],
-                "year": m["year"],
-                "month": m["month"],
-                "search_volume": m["search_volume"],
-            })
-    return pd.DataFrame(rows)
+     rows: list[Dict] = []
+-    for blk in fetch_volume(
+-        keywords,
+-        include_clickstream=True,
+-        location_code=2840,
+-        language_code="en",
+-    ):
+-        for m in blk.get("keyword_info", {}).get("monthly_searches", []):
+-            rows.append(
+-                {
+-                    "keyword": blk["keyword"],
+-                    "year": m["year"],
+-                    "month": m["month"],
+-                    "search_volume": m["search_volume"],
+-                }
+-            )
++    for blk in fetch_volume(
++        keywords,
++        include_clickstream=True,
++        location_code=2840,
++        language_code="en",
++    ):
++        # DFS “historical_search_volume/live” comes back as an `items` list
++        for item in blk.get("items", []):
++            rows.append(
++                {
++                    "keyword": blk["keyword"],
++                    "year": item["year"],
++                    "month": item["month"],
++                    "search_volume": item["search_volume"],
++                }
++            )
+     return pd.DataFrame(rows)
 
 # -----------------------------------------------------------------------------
 # Full pipeline (backward‑compatible)
