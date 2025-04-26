@@ -3,14 +3,29 @@ import os
 import time
 import logging
 from typing import List, Dict, Any
+import streamlit as st  # Add proper import here
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
 # ------------------------------------------------------------------
 # 1️⃣  secrets come from env or st.secrets; never hard-code
-DFS_USER = os.getenv("DFS_USER") or st.secrets["DFS_USER"]
-DFS_PASS = os.getenv("DFS_PASS") or st.secrets["DFS_PASS"]
+def get_credentials():
+    """Get DFS credentials from environment or streamlit secrets"""
+    try:
+        # Try to get from environment variables first
+        dfs_user = os.getenv("DFS_USER")
+        dfs_pass = os.getenv("DFS_PASS")
+        
+        # If not found, try streamlit secrets
+        if not dfs_user or not dfs_pass:
+            dfs_user = st.secrets.get("DFS_USER")
+            dfs_pass = st.secrets.get("DFS_PASS")
+            
+        return dfs_user, dfs_pass
+    except Exception as e:
+        logging.error(f"Error getting DFS credentials: {str(e)}")
+        return None, None
 
 _ENDPOINT = (
     "https://api.dataforseo.com/v3/"
@@ -44,6 +59,12 @@ def fetch_volume(
     Return the `result` array from DataForSEO:
     one dict per keyword with 12-month `monthly_searches`, CPC, etc.
     """
+    # Get credentials when the function is called, not at module level
+    dfs_user, dfs_pass = get_credentials()
+    
+    if not dfs_user or not dfs_pass:
+        raise ValueError("DataForSEO credentials not found. Please set DFS_USER and DFS_PASS in environment or secrets.")
+    
     payload = [
         {
             "keywords": keywords,
@@ -56,7 +77,7 @@ def fetch_volume(
     ]
 
     start = time.perf_counter()
-    resp = _session.post(_ENDPOINT, json=payload, auth=(DFS_USER, DFS_PASS), timeout=60)
+    resp = _session.post(_ENDPOINT, json=payload, auth=(dfs_user, dfs_pass), timeout=60)
     resp.raise_for_status()
 
     logging.info(
