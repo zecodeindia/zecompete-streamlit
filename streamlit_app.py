@@ -491,7 +491,17 @@ with tabs[2]:
         # Generate keywords and get search volume
         if st.button("Generate Keywords & Get Search Volume"):
             with st.spinner("Running keyword pipeline..."):
-                try:
+                if st.button("Clear Previous Data"):
+    try:
+        existing_namespaces = idx.describe_index_stats().namespaces
+        if "keywords" in existing_namespaces:
+            idx.delete(delete_all=True, namespace="keywords")
+            st.success("✅ 'keywords' namespace cleared successfully.")
+        else:
+            st.info("ℹ️ No 'keywords' namespace found. Skipping deletion.")
+    except Exception as e:
+        st.error(f"❌ Failed to clear data: {e}")
+
                     # Clear keywords first
 # Check if 'keywords' namespace exists before trying to delete it
 existing_namespaces = idx.describe_index_stats().namespaces
