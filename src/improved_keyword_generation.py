@@ -28,22 +28,29 @@ def generate_local_search_keywords(
     city: str,
     model: str = DEFAULT_MODEL
 ) -> List[str]:
-    """
-    Generate high-quality local search keywords for businesses using OpenAI
+    # ... existing code ...
     
-    Args:
-        business_names: List of business names
-        city: Target city for local intent
-        model: OpenAI model to use
-        
-    Returns:
-        List of unique keywords relevant to the businesses in the specified city
-    """
-    if not business_names:
-        print("No business names provided")
-        return []
-        
-    print(f"Generating keywords for {len(business_names)} businesses in {city}...")
+    # Filter to only include brand+location pairs, without additional terms
+    final_keywords = []
+    forbidden_terms = ["location", "direction", "address", "timings", "timing", 
+                      "phone", "number", "contact", "open", "hour", "time"]
+    
+    for kw in all_keywords:
+        # Only include if:
+        # 1. Contains a business name token
+        # 2. Doesn't contain any forbidden terms
+        # 3. Is not too short or too long
+        if (any(token in normalize_text(kw) for token in business_tokens) and 
+                not any(term in kw.lower() for term in forbidden_terms) and 
+                5 < len(kw) < 50):
+            # Add clean versions with city
+            if city.lower() not in kw.lower() and "near me" not in kw.lower():
+                kw_with_city = f"{kw} {city}"
+                final_keywords.append(kw_with_city)
+            final_keywords.append(kw)
+    
+    print(f"Generated {len(final_keywords)} clean brand+location keywords")
+    return sorted(set(final_keywords))
     
     # Create a system prompt that guides the model to generate diverse, realistic keywords
     system_prompt = f"""You are an SEO and local search expert. Your task is to generate realistic search queries 
