@@ -32,7 +32,7 @@ try:
                 # Clear keywords namespace
                 idx.delete(delete_all=True, namespace="keywords")
                 st.success("✅ All data cleared from Pinecone successfully!")
-                st.experimental_rerun()  # Rerun the app to reflect the cleared data
+                st.rerun()  # Rerun the app to reflect the cleared data
             except Exception as e:
                 st.error(f"Error clearing data: {str(e)}")
 
@@ -130,7 +130,7 @@ with tabs[0]:
             st.success("Data ready!")
             # Force cache clear and rerun
             st.cache_data.clear()
-            st.experimental_rerun()
+            st.rerun()
     
     with col2:
         # Option to run with Apify automation
@@ -180,7 +180,7 @@ with tabs[0]:
         # Show a toggle to disable auto-refresh
         if st.button("Disable Auto-Refresh"):
             st.session_state.auto_refresh = False
-            st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
+            st.rerun()  # Use st.rerun() instead of rerun
         
         # Check if we should refresh
         current_time = time.time()
@@ -219,7 +219,7 @@ with tabs[0]:
             refresh_placeholder.info(f"Auto-refreshing in {remaining} seconds... Click 'Disable Auto-Refresh' to stop.")
             # Add a manual refresh button
             if st.button("Refresh Now"):
-                st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
+                st.rerun()  # Use st.rerun() instead of rerun
 
 # Tab 2: Auto Integration
 with tabs[1]:
@@ -345,7 +345,7 @@ with tabs[2]:
                 st.success("✅ All data cleared from Pinecone successfully!")
                 # Force refresh
                 st.cache_data.clear()
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Error clearing data: {str(e)}")
     
@@ -507,7 +507,7 @@ with tabs[3]:
                     st.success("✅ CSV data uploaded to Pinecone successfully!")
                     # Force refresh
                     st.cache_data.clear()
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error uploading to Pinecone: {str(e)}")
             else:
@@ -536,7 +536,7 @@ with tabs[5]:
     # Add refresh button
     if st.button("🔄 Refresh Data View", key="refresh_explore"):
         st.cache_data.clear()
-        st.experimental_rerun()
+        st.rerun()
         
     try:
         res = idx.describe_index_stats()
@@ -603,7 +603,7 @@ with tabs[5]:
                                 st.success(f"Successfully deleted namespace '{ns_name}'")
                                 
                                 # Refresh the page to show updated stats
-                                st.experimental_rerun()  # Use st.experimental_rerun() instead of rerun
+                                st.rerun()  # Use st.rerun() instead of rerun
                         except Exception as e:
                             st.error(f"Error deleting namespace {ns_name}: {str(e)}")
                 
@@ -626,14 +626,14 @@ with tabs[6]:
                 idx.delete(delete_all=True, namespace="keywords")
                 st.success("✅ All data cleared from Pinecone successfully!")
                 st.cache_data.clear()
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Error clearing data: {str(e)}")
     
     # Add refresh button
     if st.button("🔄 Refresh Diagnostic Data", key="refresh_diagnostic"):
         st.cache_data.clear()
-        st.experimental_rerun()
+        st.rerun()
     
     # Check namespaces and count
     try:
