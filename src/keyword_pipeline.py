@@ -494,3 +494,44 @@ def run_keyword_pipeline(city: str = "Bengaluru") -> bool:
 
 if __name__ == "__main__":
     run_keyword_pipeline("Bengaluru")
+def generate_keywords_for_businesses(business_names: List[str], city: str) -> List[str]:
+    """
+    Generate keywords for a list of business names in a city
+    This is the function being imported in streamlit_app.py
+    
+    Args:
+        business_names: List of business names
+        city: Target city
+        
+    Returns:
+        List of generated keywords
+    """
+    # This function can internally use the existing generate_location_keywords
+    # function with the business names provided
+    
+    if not business_names:
+        print("No business names provided")
+        return []
+    
+    # Convert business names to the format expected by generate_location_keywords
+    businesses = []
+    for name in business_names:
+        businesses.append({
+            "name": name,
+            "city": city,
+            "location": extract_location_from_name(name) 
+        })
+    
+    # Use existing function to generate keywords
+    return generate_location_keywords(businesses)
+
+def get_business_names_from_pinecone(index_name: str = "zecompete") -> List[str]:
+    """
+    Get business names from Pinecone maps namespace
+    
+    Returns:
+        List of business names
+    """
+    # This can use the existing extract_businesses_from_pinecone function
+    businesses = extract_businesses_from_pinecone(index_name)
+    return [business.get("name", "") for business in businesses if business.get("name")]
