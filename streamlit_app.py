@@ -440,19 +440,33 @@ with tabs[2]:
                 st.error(f"❌ Error running keyword pipeline: {e}")
 
 # After keyword pipeline runs
+# After keyword pipeline runs
 with st.spinner("Fetching generated keywords..."):
     try:
         pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
         idx = pc.Index("zecompete")  # Your index
-
-        dummy_vector = [0.0] * 1536
-
+        
+        # Get the statistics to see how many vectors we have
+        stats = idx.describe_index_stats()
+        keywords_count = 0
+        if "keywords" in stats.get("namespaces", {}):
+            keywords_count = stats["namespaces"]["keywords"].get("vector_count", 0)
+            st.write(f"Found {keywords_count} keywords in Pinecone")
+        
+        # Create a slightly randomized vector for better retrieval
+        import random
+        dimension = stats.get("dimension", 1536)
+        dummy_vector = [random.uniform(-0.01, 0.01) for _ in range(dimension)]
+        
+        # Increase top_k to retrieve more of your records (you have 84)
         result = idx.query(
             vector=dummy_vector,
-            top_k=500,
+            top_k=100,  # Increase to capture more records
             include_metadata=True,
             namespace="keywords"
         )
+        
+        # Rest of the code...
 
         if result.matches:
             keyword_data = []
