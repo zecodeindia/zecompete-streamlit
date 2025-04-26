@@ -324,7 +324,8 @@ with tabs[2]:
 with st.spinner("Fetching generated keywords..."):
     try:
         pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
-        idx = pc.Index("zecompete")  # Or your index name
+        idx = pc.Index("zecompete")  # Your index
+
         dummy_vector = [0.0] * 1536
 
         result = idx.query(
@@ -342,14 +343,24 @@ with st.spinner("Fetching generated keywords..."):
                     "Keyword": md.get("keyword", ""),
                     "Search Volume": md.get("search_volume", 0),
                     "Competition": md.get("competition", ""),
-                    "CPC": md.get("cpc", "")
+                    "CPC": md.get("cpc", 0)
                 })
 
             if keyword_data:
-                import pandas as pd
                 df_keywords = pd.DataFrame(keyword_data)
                 st.subheader("📊 Generated Keywords")
-                st.dataframe(df_keywords)
+
+                # Sort by Search Volume descending
+                st.dataframe(df_keywords.sort_values(by="Search Volume", ascending=False), use_container_width=True)
+
+                # CSV download
+                csv = df_keywords.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Download Keywords as CSV",
+                    data=csv,
+                    file_name='generated_keywords.csv',
+                    mime='text/csv',
+                )
             else:
                 st.info("No keywords found yet.")
         else:
