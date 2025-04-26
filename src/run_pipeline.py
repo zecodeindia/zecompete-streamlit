@@ -136,5 +136,3 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     run(args.brand, args.city)
-econe
-    logging.info(f"Upserting places data to Pin
