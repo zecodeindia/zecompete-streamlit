@@ -162,13 +162,15 @@ def upsert_keywords(df: pd.DataFrame, city: str) -> None:
                 search_volume = int(row.search_volume) if hasattr(row, 'search_volume') else 0
                 
                 metadata = {
-                    "keyword": row.keyword,
-                    "year": year,
-                    "month": month,
-                    "search_volume": search_volume,
-                    "city": city
-                }
-                
+    "keyword": row.keyword,
+    "year": year,
+    "month": month,
+    "search_volume": search_volume,
+    "competition": getattr(row, 'competition', 0.0),
+    "cpc": getattr(row, 'cpc', 0.0),
+    "city": city
+}
+
                 records.append((record_id, vec_map[row.keyword], metadata))
             except Exception as e:
                 print(f"Error creating record for keyword '{row.keyword}': {str(e)}")
