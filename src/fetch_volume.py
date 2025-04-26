@@ -1,4 +1,4 @@
-# ✅ Corrected fetch_volume.py
+# ✅ Revised fetch_volume.py
 
 import requests
 import json
@@ -58,11 +58,6 @@ def fetch_volume(keywords: List[str]) -> Dict[str, Dict]:
         # Parse the response
         data = response.json()
         
-        # Save raw response for debugging
-        with open("dataforseo_response.json", "w") as f:
-            json.dump(data, f, indent=2)
-        print("Raw response saved to dataforseo_response.json")
-        
         # Check for API errors
         if data.get("status_code") != 20000:
             print(f"DataForSEO API error: {data.get('status_message', 'Unknown error')}")
@@ -102,7 +97,7 @@ def fetch_volume(keywords: List[str]) -> Dict[str, Dict]:
                     
                 # Extract core metrics
                 search_volume = r.get("search_volume", 0)
-                competition = r.get("competition_index", 0.0)
+                competition = r.get("competition_index", 0.0)  # Get competition index
                 cpc = r.get("cpc", 0.0)
                 
                 # Add to enriched data
@@ -112,8 +107,8 @@ def fetch_volume(keywords: List[str]) -> Dict[str, Dict]:
                     "cpc": cpc / 100.0 if cpc else 0.0,  # Convert to dollars if needed
                 }
                 
-                # Print first result for debugging
-                if keyword == keywords[0]:
+                # Log first result for debugging
+                if not enriched or keyword == keywords[0]:
                     print(f"Sample result for '{keyword}': {json.dumps(enriched[keyword])}")
 
         print(f"Successfully processed {len(enriched)} keywords")
@@ -124,3 +119,12 @@ def fetch_volume(keywords: List[str]) -> Dict[str, Dict]:
         import traceback
         traceback.print_exc()
         return {}
+
+# Example usage - uncomment to test directly
+"""
+if __name__ == "__main__":
+    test_keywords = ["zara bangalore", "h&m near me", "max fashion store"]
+    results = fetch_volume(test_keywords)
+    for keyword, data in results.items():
+        print(f"Keyword: {keyword}, Volume: {data.get('search_volume')}, Competition: {data.get('competition')}")
+"""
