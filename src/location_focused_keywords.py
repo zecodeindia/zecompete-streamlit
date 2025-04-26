@@ -166,13 +166,13 @@ def clean_brand_name(name: str) -> str:
 
 def create_location_focused_keywords(business_data: List[Dict]) -> List[str]:
     """
-    Create keywords by pairing brand names with locations
+    Create keywords by pairing brand names with locations - only clean pairs
     
     Args:
         business_data: List of business dictionaries with name and location info
         
     Returns:
-        List of brand+location keywords
+        List of clean brand+location keywords
     """
     keywords = set()
     
@@ -190,19 +190,12 @@ def create_location_focused_keywords(business_data: List[Dict]) -> List[str]:
         if not brand:
             continue
         
-        # Create brand + location keywords
+        # Create ONLY basic brand + location keywords
         if location:
-            # Base combination
+            # Base combination only
             keywords.add(f"{brand} {location}")
             
-            # Add variants
-            keywords.add(f"{brand} {location} location")
-            keywords.add(f"{brand} {location} address")
-            keywords.add(f"{brand} {location} contact")
-            keywords.add(f"{brand} {location} timings")
-            keywords.add(f"{brand} {location} phone number")
-            
-            # If there's a city, add city variants only if city is not in location
+            # If there's a city, add city variant only if city is not in location
             if city and city.lower() not in location.lower():
                 keywords.add(f"{brand} {location} {city}")
         else:
@@ -210,13 +203,11 @@ def create_location_focused_keywords(business_data: List[Dict]) -> List[str]:
             if city:
                 keywords.add(f"{brand} {city}")
                 keywords.add(f"{brand} in {city}")
-                keywords.add(f"{brand} {city} location")
-                keywords.add(f"{brand} {city} address")
     
     # Filter out empty or too short keywords
     filtered_keywords = [kw for kw in keywords if kw and len(kw) > 5]
     
-    print(f"Generated {len(filtered_keywords)} location-focused keywords")
+    print(f"Generated {len(filtered_keywords)} clean brand+location keywords")
     return sorted(filtered_keywords)
 
 def generate_location_focused_keywords() -> List[str]:
