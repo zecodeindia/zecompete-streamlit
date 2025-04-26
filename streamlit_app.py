@@ -364,7 +364,7 @@ with tabs[4]:
             except Exception as e:
                 st.error(f"Error answering question: {str(e)}")
 # ------------------
-# Tab 6: Explore Data
+# Tab 6: Explore Stored Data
 # ------------------
 with tabs[5]:
     st.header("Explore Stored Data")
@@ -377,11 +377,19 @@ with tabs[5]:
         st.error("Pinecone not connected.")
     else:
         try:
+            st.subheader("Pinecone Index Stats")
+
+            # Safely load index stats
             stats = idx.describe_index_stats()
 
-            st.subheader("Pinecone Index Stats")
-            st.json(stats)
+            # Try to show stats cleanly
+            import json
+            try:
+                st.json(json.loads(json.dumps(stats)))  # Safe double-parse to handle bad src properties
+            except Exception as e:
+                st.warning(f"Could not render full index stats cleanly. ({e})")
 
+            # Show available namespaces
             namespaces = stats.get("namespaces", {})
             if namespaces:
                 for ns in namespaces:
@@ -394,11 +402,15 @@ with tabs[5]:
                                 df = pd.DataFrame(data)
                                 st.dataframe(df)
                             else:
-                                st.write("No metadata found.")
+                                st.info("No metadata records found in this namespace.")
                         else:
-                            st.write("No vectors found.")
+                            st.info("No vectors found in this namespace.")
+            else:
+                st.info("No namespaces currently available.")
         except Exception as e:
-            st.error(f"Error fetching data: {str(e)}")
+            st.error(f"Error fetching Explore tab data: {e}")
+
+# ------------------
 
 # ---------------------
 # Tab 7: Diagnostic
