@@ -8,4 +8,5 @@ openai>=1.0.0
 pandas
 requests
 python-dotenv
+plotly>=4.14.3
 rich<14.0.0
