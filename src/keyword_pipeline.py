@@ -1,13 +1,12 @@
 # =============================================================================
-# keyword_pipeline.py  –  Revised with improved keyword generation
+# keyword_pipeline.py  –  Updated to support trend data
 # =============================================================================
-"""Keyword generation and volume-enrichment pipeline with enhanced OpenAI integration.
+"""Keyword generation and volume-enrichment pipeline with trend data support.
 
-Key improvements:
-1. Better OpenAI prompt for more diverse, realistic keywords
-2. Multiple keyword generation strategies
-3. Improved DataForSEO integration
-4. Enhanced error handling and fallback mechanisms
+Key features:
+1. Fetches 12 months of historical search volume data
+2. Stores monthly trend data in Pinecone
+3. Exports trend data to CSV for visualization
 """
 
 from __future__ import annotations
@@ -17,6 +16,8 @@ import traceback
 import unicodedata
 import random
 import datetime
+import os
+import csv
 from typing import Iterable, List, Dict, Set
 
 import pandas as pd
@@ -191,61 +192,77 @@ def generate_keywords_for_businesses(business_names: Iterable[str], city: str) -
     return all_keywords
 
 # -----------------------------------------------------------------------------
-# Search volume fetch using improved DataForSEO handling
+# Search volume fetch with trend data
 # -----------------------------------------------------------------------------
 
 def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
     """
-    Get search volume data for a list of keywords
+    Get search volume data with 12-month trends for the given keywords
     
     Args:
         keywords: List of keywords to get search volumes for
         
     Returns:
-        DataFrame with keyword data including search volumes
+        DataFrame with keyword data including monthly trend data
     """
     if not keywords:
         print("No keywords provided")
         return pd.DataFrame()
         
-    print(f"Fetching search volume data for {len(keywords)} keywords...")
+    print(f"Fetching search volume data with trends for {len(keywords)} keywords...")
     
     try:
-        # Call DataForSEO API through fetch_volume function
-        results = fetch_volume(keywords)
+        # Call DataForSEO API with trend data
+        results = fetch_volume(keywords, include_trends=True)
         
         if not results:
             print("No results returned from DataForSEO")
-            return _generate_fallback_volumes(keywords)
+            return _generate_fallback_volumes_with_trends(keywords)
             
         print(f"Received data for {len(results)} keywords")
         
-        # Create rows for DataFrame
-        rows = []
-        now = datetime.datetime.now()
+        # Process the results into a DataFrame
+        all_rows = []
         
         for keyword, data in results.items():
-            # Extract values with sensible defaults
-            volume = data.get("search_volume", 0)
+            # Get base data
+            base_volume = data.get("search_volume", 0)
             competition = data.get("competition", 0.0)
             cpc = data.get("cpc", 0.0)
             
-            # Create a row for current month/year
-            rows.append({
-                "keyword": keyword,
-                "year": now.year,
-                "month": now.month,
-                "search_volume": volume,
-                "competition": competition,
-                "cpc": cpc
-            })
+            # Check for trend data
+            if "monthly_trends" in data and data["monthly_trends"]:
+                # We have monthly trend data
+                monthly_trends = data["monthly_trends"]
+                
+                # Add each month as a separate row
+                for trend in monthly_trends:
+                    all_rows.append({
+                        "keyword": keyword,
+                        "year": trend.get("year", 0),
+                        "month": trend.get("month", 0),
+                        "search_volume": trend.get("search_volume", base_volume),
+                        "competition": competition,
+                        "cpc": cpc
+                    })
+            else:
+                # No trend data, use current data only
+                now = datetime.datetime.now()
+                all_rows.append({
+                    "keyword": keyword,
+                    "year": now.year,
+                    "month": now.month,
+                    "search_volume": base_volume,
+                    "competition": competition,
+                    "cpc": cpc
+                })
         
-        if not rows:
+        if not all_rows:
             print("No valid rows created from API results")
-            return _generate_fallback_volumes(keywords)
+            return _generate_fallback_volumes_with_trends(keywords)
             
         # Create DataFrame
-        df = pd.DataFrame(rows)
+        df = pd.DataFrame(all_rows)
         
         # Ensure proper data types
         df["search_volume"] = pd.to_numeric(df["search_volume"], errors="coerce").fillna(0).astype(int)
@@ -254,7 +271,13 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
         df["competition"] = pd.to_numeric(df["competition"], errors="coerce").fillna(0.0).astype(float)
         df["cpc"] = pd.to_numeric(df["cpc"], errors="coerce").fillna(0.0).astype(float)
         
+        # Export to CSV for visualization
+        _export_keyword_data_to_csv(df)
+        
         # Log statistics
+        trends_count = len(df)
+        keywords_count = df["keyword"].nunique()
+        print(f"Processed {trends_count} data points for {keywords_count} keywords")
         print(f"Search volume stats: min={df['search_volume'].min()}, max={df['search_volume'].max()}, mean={df['search_volume'].mean():.1f}")
         
         return df
@@ -262,27 +285,27 @@ def get_search_volumes(keywords: List[str]) -> pd.DataFrame:
     except Exception as e:
         print(f"Error in get_search_volumes: {str(e)}")
         traceback.print_exc()
-        return _generate_fallback_volumes(keywords)
+        return _generate_fallback_volumes_with_trends(keywords)
 
-def _generate_fallback_volumes(keywords: List[str]) -> pd.DataFrame:
+def _generate_fallback_volumes_with_trends(keywords: List[str]) -> pd.DataFrame:
     """
-    Generate realistic fallback data when the API fails
+    Generate fallback data with 12 months of trend data
     
     Args:
-        keywords: List of keywords to generate data for
+        keywords: List of keywords to generate trend data for
         
     Returns:
-        DataFrame with simulated search volume data
+        DataFrame with simulated search volume trend data
     """
-    print("Generating fallback search volume data")
-    
-    rows = []
-    now = datetime.datetime.now()
+    print("Generating fallback search volume data with trends")
     
     # Factors that influence search volume
     local_intent_terms = ["near me", "address", "location", "directions", "map"]
     high_volume_terms = ["best", "top", "cheap", "price", "discount", "deals"]
     low_volume_terms = ["timings", "hours", "phone", "contact", "email", "owner"]
+    
+    all_rows = []
+    now = datetime.datetime.now()
     
     for keyword in keywords:
         kw_lower = keyword.lower()
@@ -301,7 +324,7 @@ def _generate_fallback_volumes(keywords: List[str]) -> pd.DataFrame:
             base_volume = int(base_volume * random.uniform(0.4, 0.7))  # Lower for specific needs
             
         # Ensure reasonable minimum
-        volume = max(10, base_volume)
+        base_volume = max(10, base_volume)
         
         # Generate realistic competition score (0-1)
         competition = round(random.uniform(0.1, 0.95), 2)
@@ -310,23 +333,82 @@ def _generate_fallback_volumes(keywords: List[str]) -> pd.DataFrame:
         base_cpc = 0.5 + (competition * 3)  # Higher competition → higher CPC
         cpc = round(random.uniform(base_cpc * 0.8, base_cpc * 1.2), 2)  # Add some variation
         
-        # Add row
-        rows.append({
-            "keyword": keyword,
-            "year": now.year,
-            "month": now.month,
-            "search_volume": volume,
-            "competition": competition,
-            "cpc": cpc
-        })
+        # Generate 12 months of trend data
+        for i in range(12):
+            # Calculate month and year for this data point (going backwards)
+            month = now.month - i
+            year = now.year
+            
+            # Handle month wrapping
+            if month <= 0:
+                month += 12
+                year -= 1
+                
+            # Apply seasonal and random variation to volume
+            seasonal_factor = 1.0
+            
+            # Different seasonal patterns
+            if month in [11, 12, 1]:  # Winter months
+                seasonal_factor = random.uniform(0.85, 1.15)
+            elif month in [3, 4, 5]:  # Spring months
+                seasonal_factor = random.uniform(0.9, 1.2)
+            elif month in [6, 7, 8]:  # Summer months
+                seasonal_factor = random.uniform(0.8, 1.1)
+            else:
+                seasonal_factor = random.uniform(0.9, 1.25)  # Fall months
+                
+            # Add randomness for more realistic trends
+            random_factor = random.uniform(0.9, 1.1)
+            
+            # Calculate this month's volume
+            month_volume = int(base_volume * seasonal_factor * random_factor)
+            
+            # Add row
+            all_rows.append({
+                "keyword": keyword,
+                "year": year,
+                "month": month,
+                "search_volume": month_volume,
+                "competition": competition,
+                "cpc": cpc
+            })
     
     # Create DataFrame
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(all_rows)
     
-    print(f"Generated fallback data with {len(df)} rows")
-    print(f"Volume range: {df['search_volume'].min()}-{df['search_volume'].max()}, Mean: {df['search_volume'].mean():.1f}")
+    # Export to CSV for visualization
+    _export_keyword_data_to_csv(df)
     
+    print(f"Generated fallback trend data with {len(df)} rows for {len(keywords)} keywords")
     return df
+
+def _export_keyword_data_to_csv(df: pd.DataFrame) -> None:
+    """
+    Export keyword data to CSV for visualization
+    
+    Args:
+        df: DataFrame with keyword data
+    """
+    try:
+        # Create the data directory if it doesn't exist
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        
+        # Define CSV path
+        csv_path = os.path.join(data_dir, "keyword_volumes.csv")
+        
+        # Export to CSV
+        df.to_csv(csv_path, index=False)
+        print(f"Exported keyword data to {csv_path}")
+        
+        # For Streamlit app, also copy to root directory
+        root_csv_path = "keyword_volumes.csv"
+        df.to_csv(root_csv_path, index=False)
+        print(f"Also exported to {root_csv_path} for Streamlit access")
+        
+    except Exception as e:
+        print(f"Error exporting keyword data to CSV: {e}")
+        traceback.print_exc()
 
 # -----------------------------------------------------------------------------
 # Full pipeline (backward‑compatible)
@@ -364,8 +446,8 @@ def run_keyword_pipeline(city: str = "General") -> bool:
         sample_size = min(10, len(kws))
         print(f"Sample keywords: {', '.join(kws[:sample_size])}")
         
-        # Fetch search volumes
-        print(f"Fetching search volume data...")
+        # Fetch search volumes with trend data
+        print(f"Fetching search volume data with trends...")
         df = get_search_volumes(kws)
         
         # Verify DataFrame
@@ -380,6 +462,12 @@ def run_keyword_pipeline(city: str = "General") -> bool:
             print("First 5 rows of data:")
             for idx, row in df.head(5).iterrows():
                 print(f"  Row {idx}: {dict(row)}")
+                
+            # Show unique months/years in the data
+            years = sorted(df["year"].unique())
+            months = sorted(df["month"].unique())
+            print(f"Years in data: {years}")
+            print(f"Months in data: {months}")
         
         # Add city to DataFrame
         df = df.assign(city=city)
@@ -422,4 +510,4 @@ def run_keyword_pipeline(city: str = "General") -> bool:
         return False
 
 if __name__ == "__main__":
-    run_keyword_pipeline("Bengaluru")
+    run_keyword_pipeline
