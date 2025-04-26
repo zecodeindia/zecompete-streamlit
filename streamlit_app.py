@@ -283,23 +283,43 @@ with tabs[1]:
             else:
                 st.error("❌ Failed to process dataset")
 # -----------------------------------
+# -----------------------------------
 # Tab 3: Keywords & Search Volume
 # -----------------------------------
 with tabs[2]:
     st.header("Keywords & Search Volume Analysis")
 
+    # Clear previous keywords button
     if st.button("🔄 Clear Previous Keywords", key="clear_kw_tab"):
         with st.spinner("Clearing keyword data..."):
             safe_clear_namespace(idx, "keywords")
             st.success("✅ Cleared keyword data.")
 
-    city = st.text_input("City for keywords", "General")
+    # Input city name for keyword context
+    city = st.text_input("City for keywords", "Bengaluru")
 
-    if st.button("Generate Keywords"):
+    # Check business names button
+    if st.button("🔎 Check Business Names"):
+        with st.spinner("Retrieving business names from Pinecone..."):
+            try:
+                business_names = get_business_names_from_pinecone()
+                if business_names:
+                    st.success(f"✅ Found {len(business_names)} business names.")
+                    st.write(business_names[:10])  # Show sample
+                else:
+                    st.warning("⚠️ No business names found in Pinecone (maps namespace may be empty).")
+            except Exception as e:
+                st.error(f"❌ Error fetching business names: {e}")
+
+    # Generate keywords button
+    if st.button("🚀 Generate Keywords & Get Search Volume"):
         with st.spinner("Running keyword generation pipeline..."):
-            safe_clear_namespace(idx, "keywords")
-            run_keyword_pipeline(city)
-            st.success("✅ Keyword pipeline completed!")
+            try:
+                run_keyword_pipeline(city)
+                st.success("✅ Keyword pipeline completed!")
+            except Exception as e:
+                st.error(f"❌ Error running keyword pipeline: {e}")
+
 
 # ---------------------
 # Tab 4: Manual Upload
