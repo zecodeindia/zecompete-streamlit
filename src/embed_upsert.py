@@ -120,11 +120,62 @@ def upsert_keywords(df: pd.DataFrame, city: str) -> None:
     except Exception as e:
         print(f"Warning: Could not clear previous keyword data: {str(e)}")
     
-    # df: keyword, year, month, search_volume
-    unique = df["keyword"].unique().tolist()
-    print(f"Generating embeddings for {len(unique)} unique keywords...")
-    vecs = _embed(unique)
-    vec_map = dict(zip(unique, vecs))
+    # Check if we have trend data in separate rows or as a nested structure
+    has_trend_columns = all(col in df.columns for col in ['keyword', 'year', 'month', 'search_volume'])
+    has_monthly_trends = 'monthly_trends' in df.columns
+    
+    # Process differently based on data structure
+    if has_trend_columns:
+        # Data is already in the correct format with separate rows for each month
+        unique_keywords = df["keyword"].unique().tolist()
+    elif has_monthly_trends:
+        # Trend data is nested in a monthly_trends column
+        # Need to expand it into separate rows
+        expanded_rows = []
+        
+        for _, row in df.iterrows():
+            keyword = row.get('keyword', '')
+            base_volume = row.get('search_volume', 0)
+            competition = row.get('competition', 0.0)
+            cpc = row.get('cpc', 0.0)
+            
+            # Get monthly trends
+            monthly_trends = row.get('monthly_trends', [])
+            
+            if isinstance(monthly_trends, list) and monthly_trends:
+                # Add each month as a separate row
+                for trend in monthly_trends:
+                    expanded_rows.append({
+                        'keyword': keyword,
+                        'year': trend.get('year', 0),
+                        'month': trend.get('month', 0),
+                        'search_volume': trend.get('search_volume', 0),
+                        'competition': competition,
+                        'cpc': cpc,
+                        'city': row.get('city', city)
+                    })
+            else:
+                # No trend data, just add the base row
+                expanded_rows.append({
+                    'keyword': keyword,
+                    'year': row.get('year', 0),
+                    'month': row.get('month', 0),
+                    'search_volume': base_volume,
+                    'competition': competition,
+                    'cpc': cpc,
+                    'city': row.get('city', city)
+                })
+        
+        # Create new DataFrame with expanded rows
+        df = pd.DataFrame(expanded_rows)
+        unique_keywords = df["keyword"].unique().tolist()
+    else:
+        # Regular format with just current data (no trends)
+        unique_keywords = df["keyword"].unique().tolist()
+    
+    print(f"Generating embeddings for {len(unique_keywords)} unique keywords...")
+    vecs = _embed(unique_keywords)
+    vec_map = dict(zip(unique_keywords, vecs))
     print(f"Generated embeddings for {len(vec_map)} unique keywords")
     
     try:
@@ -154,6 +205,7 @@ def upsert_keywords(df: pd.DataFrame, city: str) -> None:
                 continue
                 
             try:
+                # Create a unique ID that includes year and month for trend data
                 record_id = f"kw-{row.keyword}-{row.year}{row.month:02}"
                 
                 # Ensure all metadata fields are of proper types
@@ -162,14 +214,14 @@ def upsert_keywords(df: pd.DataFrame, city: str) -> None:
                 search_volume = int(row.search_volume) if hasattr(row, 'search_volume') else 0
                 
                 metadata = {
-    "keyword": row.keyword,
-    "year": year,
-    "month": month,
-    "search_volume": search_volume,
-    "competition": getattr(row, 'competition', 0.0),
-    "cpc": getattr(row, 'cpc', 0.0),
-    "city": city
-}
+                    "keyword": row.keyword,
+                    "year": year,
+                    "month": month,
+                    "search_volume": search_volume,
+                    "competition": getattr(row, 'competition', 0.0),
+                    "cpc": getattr(row, 'cpc', 0.0),
+                    "city": city
+                }
 
                 records.append((record_id, vec_map[row.keyword], metadata))
             except Exception as e:
