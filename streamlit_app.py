@@ -603,6 +603,10 @@ with tabs[6]:
     st.write(f"Scrape/Task Manager Module: {'✅' if scrape_module_ok else '❌'}")
     st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
 
+with tabs[7]:  # This should be the index of your "Keyword Trends" tab
+    st.header("Keyword Search Volume Trends")
+    display_keyword_trends()
+
 # Webhook Handler (for Apify)
 st.markdown("---")
 st.header("Webhook Handler (Testing Only)")
