@@ -227,7 +227,7 @@ def generate_location_keywords(businesses: List[Dict]) -> List[str]:
         businesses: List of business dictionaries
         
     Returns:
-        List of location-focused keywords
+        List of clean brand+location pairs without additional terms
     """
     keywords = set()
     
@@ -244,19 +244,12 @@ def generate_location_keywords(businesses: List[Dict]) -> List[str]:
         if not brand:
             continue
         
-        # Create keywords
+        # Create keywords - ONLY basic brand + location combinations
         if location:
-            # Basic brand + location combinations
+            # Only add the clean brand + location pair
             keywords.add(f"{brand} {location}")
             
-            # Add search intent variants
-            keywords.add(f"{brand} {location} address")
-            keywords.add(f"{brand} {location} location")
-            keywords.add(f"{brand} {location} timings")
-            keywords.add(f"{brand} {location} phone number")
-            keywords.add(f"{brand} {location} direction")
-            
-            # Add city if not already in location
+            # Add city only if not already in location
             if city and city.lower() not in location.lower():
                 keywords.add(f"{brand} {location} {city}")
         else:
@@ -268,7 +261,7 @@ def generate_location_keywords(businesses: List[Dict]) -> List[str]:
     # Filter out empty or too short keywords
     filtered_keywords = [kw for kw in keywords if kw and len(kw) > 5]
     
-    print(f"Generated {len(filtered_keywords)} location-focused keywords")
+    print(f"Generated {len(filtered_keywords)} clean brand+location keywords")
     return sorted(filtered_keywords)
 
 # -----------------------------------------------------------------------------
