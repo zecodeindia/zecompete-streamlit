@@ -273,7 +273,7 @@ tabs = st.tabs([
     "Run Analysis", 
     "Auto Integration", 
     "Keywords & Search Volume", 
-    "Keyword Trends",  # New tab
+    "Keyword Trends",  
     "Manual Upload", 
     "Ask Questions", 
     "Explore Data", 
@@ -486,11 +486,56 @@ with st.spinner("Fetching generated keywords..."):
             st.info("No keywords found yet.")
     except Exception as e:
         st.error(f"Error fetching keywords from Pinecone: {e}")
-
-# ---------------------
-# Tab 4: Manual Upload
-# ---------------------
+# Make sure this is tab 3, corresponding to Keyword Trends
 with tabs[3]:
+    st.subheader("Keyword Search Volume Trends")
+    
+    # Check if trend data exists
+    trend_file_path = "keyword_volumes.csv"
+    if not os.path.exists(trend_file_path):
+        st.info("No trend data available. Please run the keyword pipeline first to generate trend data.")
+        if st.button("Generate Keywords with Trends"):
+            try:
+                from src.keyword_pipeline import run_keyword_pipeline
+                city = st.session_state.get("last_city", "Bengaluru")
+                with st.spinner(f"Generating keywords with trend data for {city}..."):
+                    success = run_keyword_pipeline(city)
+                    if success:
+                        st.success(f"✅ Generated keywords with trend data for {city}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to generate keywords")
+            except Exception as e:
+                st.error(f"Error generating keywords: {str(e)}")
+    else:
+        # Load and display trend data
+        try:
+            df = pd.read_csv(trend_file_path)
+            st.write(f"Found trend data with {len(df)} rows")
+            
+            # Simple visualization using st.line_chart (no external dependencies)
+            st.subheader("Trend Visualization")
+            
+            # Create proper date column
+            df["date"] = pd.to_datetime(df[["year", "month"]].assign(day=1))
+            
+            # Pivot data for charting
+            keywords = df["keyword"].unique()
+            pivot_df = df.pivot(index="date", columns="keyword", values="search_volume")
+            
+            # Show the chart
+            st.line_chart(pivot_df)
+            
+            # Show raw data
+            if st.checkbox("Show raw data"):
+                st.dataframe(df)
+            
+        except Exception as e:
+            st.error(f"Error displaying trend data: {e}")
+# ---------------------
+# Tab 5: Manual Upload
+# ---------------------
+with tabs[4]:
     st.header("Manual Upload (CSV)")
 
     if st.button("🔄 Clear Previous Upload Data", key="clear_upload_tab"):
@@ -514,9 +559,9 @@ with tabs[3]:
                 st.success("✅ Upload completed!")
 
 # ----------------------
-# Tab 5: Ask Questions
+# Tab 6: Ask Questions
 # ----------------------
-with tabs[4]:
+with tabs[5]:
     st.header("Ask Questions About Data")
 
     question = st.text_area("Your question")
@@ -530,9 +575,9 @@ with tabs[4]:
             except Exception as e:
                 st.error(f"Error answering question: {str(e)}")
 # ------------------
-# Tab 6: Explore Stored Data
+# Tab 7: Explore Stored Data
 # ------------------
-with tabs[5]:
+with tabs[6]:
     st.header("Explore Stored Data")
 
     if st.button("🔄 Refresh Data View", key="refresh_explore"):
@@ -579,9 +624,9 @@ with tabs[5]:
 # ------------------
 
 # ---------------------
-# Tab 7: Diagnostic
+# Tab 8: Diagnostic
 # ---------------------
-with tabs[6]:
+with tabs[7]:
     st.header("Diagnostic Info")
 
     if st.button("🔄 Clear All Data", key="clear_diagnostic"):
@@ -602,10 +647,6 @@ with tabs[6]:
     st.write(f"Embed Module: {'✅' if embed_module_ok else '❌'}")
     st.write(f"Scrape/Task Manager Module: {'✅' if scrape_module_ok else '❌'}")
     st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
-
-with tabs[7]:  # This should be the index of your "Keyword Trends" tab
-    st.header("Keyword Search Volume Trends")
-    display_keyword_trends()
 
 # Webhook Handler (for Apify)
 st.markdown("---")
