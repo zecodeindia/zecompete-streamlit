@@ -709,7 +709,6 @@ with tabs[5]:
                                         if match.metadata:
                                             data.append(match.metadata)
                                     
-                                    if
                                     if data:
                                         df = pd.DataFrame(data)
                                         st.dataframe(df)
