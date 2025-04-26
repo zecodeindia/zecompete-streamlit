@@ -320,6 +320,42 @@ with tabs[2]:
             except Exception as e:
                 st.error(f"❌ Error running keyword pipeline: {e}")
 
+# After keyword pipeline runs
+with st.spinner("Fetching generated keywords..."):
+    try:
+        pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+        idx = pc.Index("zecompete")  # Or your index name
+        dummy_vector = [0.0] * 1536
+
+        result = idx.query(
+            vector=dummy_vector,
+            top_k=500,
+            include_metadata=True,
+            namespace="keywords"
+        )
+
+        if result.matches:
+            keyword_data = []
+            for match in result.matches:
+                md = match.metadata or {}
+                keyword_data.append({
+                    "Keyword": md.get("keyword", ""),
+                    "Search Volume": md.get("search_volume", 0),
+                    "Competition": md.get("competition", ""),
+                    "CPC": md.get("cpc", "")
+                })
+
+            if keyword_data:
+                import pandas as pd
+                df_keywords = pd.DataFrame(keyword_data)
+                st.subheader("📊 Generated Keywords")
+                st.dataframe(df_keywords)
+            else:
+                st.info("No keywords found yet.")
+        else:
+            st.info("No keywords found yet.")
+    except Exception as e:
+        st.error(f"Error fetching keywords from Pinecone: {e}")
 
 # ---------------------
 # Tab 4: Manual Upload
