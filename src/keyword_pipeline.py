@@ -30,9 +30,41 @@ from src.embed_upsert import upsert_keywords
 # ------------------------------------------------------------------
 # PUBLIC API – keep the names other modules expect
 # ------------------------------------------------------------------
-def get_business_names_from_pinecone(*args, **kwargs):
-     """Legacy alias – importers still use this name."""
-     return _business_names_from_pinecone(*args, **kwargs)
+def _business_names_from_pinecone(index_name: str = "zecompete") -> List[str]:
+    pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
+    index = pc.Index(index_name)
+
+    # Directly list namespaces and fetch all items
+    names = set()
+    try:
+        stats = index.describe_index_stats()
+        dimension = stats.get("dimension", 1536)
+        namespaces = [ns for ns in stats.get("namespaces", {}) if ns != "keywords"]
+
+        dummy_vector = [0.0] * dimension
+
+        for ns in namespaces:
+            try:
+                # Fetch as many as possible
+                result = index.query(
+                    vector=dummy_vector,
+                    top_k=500,  # Increase top_k
+                    include_metadata=True,
+                    namespace=ns or None
+                )
+                if result.matches:
+                    for match in result.matches:
+                        md = match.metadata or {}
+                        for fld in ("name", "title", "business_name", "brand", "company"):
+                            if md.get(fld):
+                                names.add(str(md[fld]))
+                                break
+            except Exception as e:
+                print(f"Error querying namespace '{ns}': {e}")
+    except Exception as e:
+        print(f"Error describing index stats: {e}")
+
+    return sorted(names)
 # -----------------------------------------------------------------------------
 # OpenAI client & prompt templates
 # -----------------------------------------------------------------------------
