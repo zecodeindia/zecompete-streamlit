@@ -711,4 +711,132 @@ with tabs[6]:
                 resp2 = requests.get(url, headers=headers)
                 st.write(f"Response status: {resp2.status_code}")
                 
-                # Use the successful response or show both
+                # Use the successful response or show both errors
+                if resp1.status_code == 200:
+                    data = resp1.json()
+                    st.success("✅ Successfully connected to Apify API using query parameter")
+                    st.write("User info:")
+                    st.json(data)
+                elif resp2.status_code == 200:
+                    data = resp2.json()
+                    st.success("✅ Successfully connected to Apify API using Bearer token")
+                    st.write("User info:")
+                    st.json(data)
+                else:
+                    st.error("❌ Failed to connect to Apify API with both authentication methods")
+                    st.write("Query parameter response:")
+                    st.text(resp1.text)
+                    st.write("Bearer token response:")
+                    st.text(resp2.text)
+                    
+                # Now test the specific task
+                task_id = "zecodemedia~google-maps-scraper-task"
+                task_url = f"https://api.apify.com/v2/actor-tasks/{task_id}"
+                
+                st.write(f"Testing access to task: {task_id}")
+                
+                # Try both authentication methods
+                st.write("Testing task access with query parameter...")
+                task_resp1 = requests.get(task_url, params=params)
+                st.write(f"Response status: {task_resp1.status_code}")
+                
+                st.write("Testing task access with Bearer token...")
+                task_resp2 = requests.get(task_url, headers=headers)
+                st.write(f"Response status: {task_resp2.status_code}")
+                
+                # Use the successful response or show both errors
+                if task_resp1.status_code == 200:
+                    task_data = task_resp1.json()
+                    st.success(f"✅ Successfully accessed task using query parameter")
+                    st.write("Task info:")
+                    st.json(task_data)
+                elif task_resp2.status_code == 200:
+                    task_data = task_resp2.json()
+                    st.success(f"✅ Successfully accessed task using Bearer token")
+                    st.write("Task info:")
+                    st.json(task_data)
+                else:
+                    st.error(f"❌ Failed to access task with both authentication methods")
+                    st.write("Query parameter response:")
+                    st.text(task_resp1.text)
+                    st.write("Bearer token response:")
+                    st.text(task_resp2.text)
+        except Exception as e:
+            st.error(f"Error during Apify testing: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    st.markdown("---")
+    st.subheader("Test Direct Apify Task Run")
+
+    test_brand = st.text_input("Test brand name", "Zara")
+    test_city = st.text_input("Test city", "Bengaluru")
+
+    if st.button("Run Test Task"):
+        try:
+            from src.scrape_maps import run_apify_task
+            
+            # Clear existing data first
+            with st.spinner("Clearing previous data..."):
+                try:
+                    idx.delete(delete_all=True, namespace="maps")
+                    idx.delete(delete_all=True, namespace="keywords")
+                    st.success("✅ Previous data cleared successfully")
+                except Exception as e:
+                    st.error(f"❌ Error clearing data: {str(e)}")
+            
+            with st.spinner("Running test Apify task..."):
+                run_id, results = run_apify_task(test_brand, test_city, wait=True)
+                
+            if run_id:
+                st.success(f"✅ Successfully started task with run ID: {run_id}")
+                
+                if results:
+                    st.success(f"✅ Task completed and returned {len(results)} results")
+                    st.write("First result:")
+                    st.json(results[0])
+                else:
+                    st.warning("⚠️ Task started but did not return results (it might still be running)")
+            else:
+                st.error("❌ Failed to start task")
+                
+        except Exception as e:
+            st.error(f"Error running test task: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+# Add a webhook handler route
+# Since Streamlit doesn't support real routes, this is a workaround
+st.markdown("---")
+st.write("### Webhook Handler")
+st.write("This section handles webhook callbacks from Apify (for demonstration purposes).")
+
+webhook_data = st.text_area("For testing, paste webhook JSON payload here:", "", key="webhook_payload")
+
+if st.button("Process Webhook Payload") and webhook_data:
+    try:
+        # Clear existing data first
+        with st.spinner("Clearing previous data..."):
+            try:
+                idx.delete(delete_all=True, namespace="maps")
+                idx.delete(delete_all=True, namespace="keywords")
+                st.success("✅ Previous data cleared successfully")
+            except Exception as e:
+                st.error(f"❌ Error clearing data: {str(e)}")
+        
+        payload = json.loads(webhook_data)
+        from src.webhook_handler import handle_webhook_payload
+        
+        success = handle_webhook_payload(payload)
+        if success:
+            st.success("✅ Webhook processed successfully")
+        else:
+            st.error("❌ Webhook processing failed")
+    except json.JSONDecodeError:
+        st.error("Invalid JSON payload")
+    except Exception as e:
+        st.error(f"Error processing webhook: {str(e)}")
+
+# Footer
+st.markdown("---")
+st.write("© 2025 Zecode - Competitor Location & Demand Explorer")
