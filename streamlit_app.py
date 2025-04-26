@@ -493,7 +493,13 @@ with tabs[2]:
             with st.spinner("Running keyword pipeline..."):
                 try:
                     # Clear keywords first
-                    idx.delete(delete_all=True, namespace="keywords")
+# Check if 'keywords' namespace exists before trying to delete it
+existing_namespaces = idx.describe_index_stats().namespaces
+if "keywords" in existing_namespaces:
+    idx.delete(delete_all=True, namespace="keywords")
+    st.success("✅ 'keywords' namespace cleared successfully.")
+else:
+    st.info("ℹ️ No 'keywords' namespace found. Skipping deletion.")
                     st.write("✅ Cleared previous keyword data")
                     
                     if not dfs_creds_available:
