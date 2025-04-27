@@ -1,6 +1,6 @@
-# === FINAL Corrected openai_keyword_refiner.py ===
+# === FINAL ULTIMATE Corrected openai_keyword_refiner.py ===
 """
-OpenAI Assistant + Smart Keyword Refiner (Fully Cleaned Version)
+OpenAI Assistant + Smart Keyword Refiner with Post-Validation (Fully Cleaned Version)
 """
 import json, time, logging
 from typing import List, Dict, Any
@@ -29,6 +29,32 @@ def get_google_suggest_keywords(brand: str) -> List[str]:
     # Placeholder — implement actual API later
     return [f"{brand} Whitefield", f"{brand} Indiranagar", f"{brand} Jayanagar"]
 
+def post_validate_keywords(keywords: List[str], brand_names: List[str]) -> List[str]:
+    """
+    Post-process keywords after OpenAI cleaning:
+    1. Remove junk entries
+    2. Ensure brand + location exist
+    3. Clean spaces
+    4. Deduplicate
+    """
+    cleaned_keywords = set()
+    blacklist = ["timing", "phone", "contact", "location", "store", "reviews", "open"]
+
+    for kw in keywords:
+        kw = kw.replace(",", "").replace("  ", " ").strip()
+        if not kw:
+            continue
+        if any(bad_word in kw.lower() for bad_word in blacklist):
+            continue
+        if len(kw.split()) < 2:
+            continue
+        if not any(brand.lower() in kw.lower() for brand in brand_names):
+            continue
+        cleaned_keywords.add(kw)
+
+    logger.info(f"✅ Post-validation complete. Final keywords: {len(cleaned_keywords)}")
+    return list(cleaned_keywords)
+
 # === Core Functions ===
 
 def get_assistant_id() -> str:
@@ -40,7 +66,7 @@ def refine_keywords_openai(keywords: List[str], brand_names: List[str], city: st
         assistant_id = FIXED_ASSISTANT_ID
         thread = client.beta.threads.create()
 
-        message_content = f"""Here are the brand names: {', '.join(brand_names)}\nCity: {city}\n\nRaw keywords to refine:\n{json.dumps(keywords, indent=2)}\n\nPlease clean these keywords to focus only on brand+location pairs, removing keywords with intents like \"timings\", \"phone number\", etc.\nReturn ONLY the JSON array of clean keywords."""
+        message_content = f"""Here are the brand names: {', '.join(brand_names)}\nCity: {city}\n\nRaw keywords to refine:\n{json.dumps(keywords, indent=2)}\n\nPlease clean these keywords to focus only on brand+location pairs, removing keywords with intents like \"timings\", \"phone number\", \"store\", \"location\", etc.\nPreserve locality suffixes like Road, Layout, Nagar.\nReturn ONLY a clean JSON array of brand + locality keywords."""
 
         client.beta.threads.messages.create(thread_id=thread.id, role="user", content=message_content)
         run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=assistant_id)
@@ -65,20 +91,22 @@ def refine_keywords_openai(keywords: List[str], brand_names: List[str], city: st
             if "[" in response_text and "]" in response_text:
                 start_idx = response_text.find("[")
                 end_idx = response_text.rfind("]") + 1
-                return json.loads(response_text[start_idx:end_idx])
-        return keywords
+                raw_keywords = json.loads(response_text[start_idx:end_idx])
+                return post_validate_keywords(raw_keywords, brand_names)
+        return post_validate_keywords(keywords, brand_names)
 
     except Exception as e:
         logger.error(f"OpenAI refinement error: {str(e)}")
-        return keywords
+        return post_validate_keywords(keywords, brand_names)
 
 def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_names: List[str], city: str) -> List[str]:
     """
-    Final smart refinement with:
-    1. Protecting business names
-    2. Cleaning commas and extra spaces
-    3. Deduplicating keywords
-    4. Skipping OpenAI unless absolutely needed
+    Final smart refinement:
+    1. Protect business names
+    2. Cleaning commas and spaces
+    3. Deduplicating
+    4. Skipping OpenAI unless needed
+    5. Post-validation after OpenAI
     """
     initial_keywords = set()
 
@@ -112,7 +140,7 @@ def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_na
 
     if not needs_refinement:
         logger.info("✅ Keywords look clean. Skipping OpenAI refinement.")
-        return keywords
+        return post_validate_keywords(keywords, brand_names)
     else:
         logger.info("🔵 Keywords need refinement. Sending to OpenAI.")
         return refine_keywords_openai(keywords, brand_names, city)
