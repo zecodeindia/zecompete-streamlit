@@ -1,11 +1,7 @@
-# Modified src/enhanced_keyword_pipeline.py section
+# === UPDATED enhanced_keyword_pipeline.py ===
 """
-Modified section of the enhanced_keyword_pipeline.py file
-to use the fixed Assistant ID.
-
-This doesn't show the entire file, just the parts that need to be modified.
+Enhanced Keyword Pipeline using Smart Brand+Location Refinement
 """
-
 import os
 import sys
 import traceback
@@ -24,14 +20,51 @@ from src.keyword_pipeline import (
     run_keyword_pipeline
 )
 
-# Import our keyword refiner with fixed Assistant ID
-from src.openai_keyword_refiner import batch_refine_keywords
+# Import our new smart refiner
+from src.openai_keyword_refiner import smart_batch_refine_keywords
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Fixed Assistant ID - this should match the one in openai_keyword_refiner.py
+# Fixed Assistant ID (for traceability)
 FIXED_ASSISTANT_ID = "asst_aaWtxqys7xZZph6YQOSVP6Wk"
 
-# The rest of the file remains the same, as batch_refine_keywords will now use the fixed Assistant ID
+# === Main function ===
+
+def run_enhanced_keyword_pipeline(city: str) -> bool:
+    """
+    Main function to run enhanced keyword generation with smart refinement.
+    """
+    try:
+        # Step 1: Extract businesses from Pinecone
+        businesses = extract_businesses_from_pinecone()
+        if not businesses:
+            logger.warning("No businesses found for keyword extraction.")
+            return False
+
+        brand_names = sorted(set(extract_brand_name(b.get("name", "")) for b in businesses))
+        logger.info(f"Detected brands: {brand_names}")
+
+        # Step 2: Smart refinement using business names + address + suggest fallback
+        refined_keywords = smart_batch_refine_keywords(businesses, brand_names, city)
+
+        if not refined_keywords:
+            logger.error("Keyword refinement failed.")
+            return False
+
+        # Step 3: Fetch search volumes
+        search_volume_df = get_search_volumes(refined_keywords)
+
+        if search_volume_df.empty:
+            logger.error("No search volume data retrieved.")
+            return False
+
+        # Step 4: Save results
+        search_volume_df.to_csv("keyword_volumes.csv", index=False)
+        logger.info(f"✅ Saved {len(search_volume_df)} refined keywords.")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error in enhanced keyword pipeline: {str(e)}")
+        return False
