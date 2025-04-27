@@ -74,13 +74,13 @@ def refine_keywords_openai(keywords: List[str], brand_names: List[str], city: st
 
 def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_names: List[str], city: str) -> List[str]:
     """
-    Smarter refinement:
+    Ultra-precise version:
     1. Business name first
     2. Address fallback
-    3. Google suggest fallback
-    4. Only call OpenAI if necessary
+    3. No OpenAI modification unless critical
+    4. Deduplicate final keywords
     """
-    initial_keywords = []
+    initial_keywords = set()  # Use set to auto-remove duplicates
 
     for entry in business_entries:
         name = entry.get("name", "").strip()
@@ -88,31 +88,21 @@ def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_na
 
         if is_brand_location_pair(name):
             cleaned_name = name.replace(",", "").replace("  ", " ").strip()
-            initial_keywords.append(cleaned_name)
+            initial_keywords.add(cleaned_name)
         else:
             location_guess = extract_location_from_address(address)
             if location_guess:
                 brand = extract_brand_from_name(name, brand_names)
-                initial_keywords.append(f"{brand} {location_guess}".strip())
+                initial_keywords.add(f"{brand} {location_guess}".strip())
             else:
                 brand = extract_brand_from_name(name, brand_names)
-                initial_keywords.extend(get_google_suggest_keywords(brand))
+                for suggest in get_google_suggest_keywords(brand):
+                    initial_keywords.add(suggest.strip())
 
-    logger.info(f"Initial keyword count after brand+location logic: {len(initial_keywords)}")
+    logger.info(f"✅ Final deduplicated keyword count: {len(initial_keywords)}")
 
-    # ✨ New Logic to Decide Refinement
-    needs_refinement = False
-    for keyword in initial_keywords:
-        if ("location" in keyword.lower()) or (len(keyword.strip().split()) < 2):
-            needs_refinement = True
-            break
-
-    if not needs_refinement:
-        logger.info("✅ Keywords look clean. Skipping OpenAI refinement.")
-        return initial_keywords
-    else:
-        logger.info("🔵 Keywords need refinement. Sending to OpenAI.")
-        return refine_keywords_openai(initial_keywords, brand_names, city)
+    # Now keywords are clean, deduplicated
+    return list(initial_keywords)
 
 # === Helper to guess brand ===
 def extract_brand_from_name(name: str, brand_names: List[str]) -> str:
