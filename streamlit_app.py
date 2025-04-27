@@ -806,4 +806,3 @@ if st.button("Process Webhook Payload"):
 # Footer
 st.markdown("---")
 st.caption("© 2025 Zecode - Competitor Mapper App")
-    st.write(f"
