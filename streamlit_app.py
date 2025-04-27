@@ -693,24 +693,24 @@ with tabs[7]:
     st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
     st.write(f"OpenAI Assistant Module: {'✅' if openai_assistant_ok else '❌'}")
 
-    # Add OpenAI Assistant test
-    if openai_assistant_ok:
-        st.subheader("OpenAI Assistant Test")
-        if st.button("Test OpenAI Assistant Connection"):
-            try:
-                from src.openai_keyword_refiner import create_assistant
+   # Add OpenAI Assistant test
+if openai_assistant_ok:
+    st.subheader("OpenAI Assistant Test")
+    if st.button("Test OpenAI Assistant Connection"):
+        try:
+            from src.openai_keyword_refiner import get_assistant_id
+            
+            with st.spinner("Testing OpenAI Assistant connection..."):
+                assistant_id = get_assistant_id()
                 
-                with st.spinner("Testing OpenAI Assistant creation..."):
-                    assistant_id = create_assistant()
-                    
-                    if assistant_id:
-                        st.success(f"✅ Successfully created OpenAI Assistant (ID: {assistant_id[:10]}...)")
-                    else:
-                        st.error("❌ Failed to create OpenAI Assistant")
-            except Exception as e:
-                st.error(f"❌ Error testing OpenAI Assistant: {e}")
-                import traceback
-                st.code(traceback.format_exc())
+                if assistant_id:
+                    st.success(f"✅ Successfully connected to OpenAI Assistant (ID: {assistant_id[:10]}...)")
+                else:
+                    st.error("❌ Failed to get OpenAI Assistant ID")
+        except Exception as e:
+            st.error(f"❌ Error testing OpenAI Assistant: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
 # Webhook Handler (for Apify)
 st.markdown("---")
