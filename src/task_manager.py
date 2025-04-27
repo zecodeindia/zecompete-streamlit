@@ -142,13 +142,11 @@ def process_pending_tasks() -> int:
         
         # Process the data
         try:
-            # Direct implementation without using run_pipeline
-            
             # 1. Convert data to DataFrame
             df = pd.json_normalize(data)
             print(f"Converted {len(data)} data points to DataFrame")
             
-            # 2. Clean DataFrame (similar to what run_pipeline would do)
+            # 2. Clean DataFrame
             # Keep essential columns
             keep_cols = [c for c in df.columns if c in ["name", "title", "placeId", "totalScore", "reviewsCount", 
                                                         "gpsCoordinates.lat", "gpsCoordinates.lng", 
@@ -161,8 +159,39 @@ def process_pending_tasks() -> int:
             print(f"Upserting {len(df)} places to Pinecone maps namespace")
             upsert_places(df, brand, city)
             
-            # 4. Generate keywords (this would happen in the Business Keywords tab)
-            # Not doing it here to avoid dependency on keyword_pipeline
+            # 4. Generate keywords and fetch search volumes
+            try:
+                # Import the enhanced keyword pipeline functionality directly
+                from enhanced_keyword_pipeline import run_business_keyword_pipeline
+                
+                # Run the keyword pipeline for the city
+                print(f"Running business keyword pipeline for {city}...")
+                success = run_business_keyword_pipeline(city)
+                
+                if success:
+                    print(f"Successfully completed keyword pipeline for {city}")
+                else:
+                    print(f"Keyword pipeline failed for {city}")
+            except ImportError:
+                # If enhanced_keyword_pipeline is not available, try to use the one from business_keywords_tab
+                try:
+                    from business_keywords_tab import run_business_keyword_pipeline
+                    
+                    print(f"Running business keyword pipeline from business_keywords_tab for {city}...")
+                    success = run_business_keyword_pipeline(city)
+                    
+                    if success:
+                        print(f"Successfully completed keyword pipeline for {city}")
+                    else:
+                        print(f"Keyword pipeline failed for {city}")
+                except Exception as e:
+                    print(f"Error running keyword pipeline from business_keywords_tab: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+            except Exception as e:
+                print(f"Error running keyword pipeline: {str(e)}")
+                import traceback
+                traceback.print_exc()
             
             # Mark task as processed
             mark_task_processed(run_id)
