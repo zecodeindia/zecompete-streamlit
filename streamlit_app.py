@@ -9,7 +9,6 @@ from pinecone import Pinecone
 from openai import OpenAI
 import time
 
-
 # Import the core components
 from business_keywords_tab import render_business_keywords_tab   
 from openai_assistant_reporting import render_assistant_report_tab
