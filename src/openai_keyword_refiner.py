@@ -8,7 +8,7 @@ import json
 import time
 from typing import List, Dict, Any
 import logging
-import requests
+import streamlit as st  # Import Streamlit for UI feedback
 from openai import OpenAI
 from src.config import secret
 
@@ -72,7 +72,7 @@ def refine_keywords(keywords: List[str], brand_names: List[str], city: str, assi
         # Create assistant if not provided
         if assistant_id is None:
             assistant_id = create_assistant()
-        
+            
         # Create a thread
         thread = client.beta.threads.create()
         
@@ -99,13 +99,21 @@ Return ONLY the JSON array of clean keywords."""
             assistant_id=assistant_id
         )
         
+        # Show status in UI if running in Streamlit
+        progress_placeholder = st.empty() if 'st' in globals() else None
+        
         # Wait for the run to complete
         while run.status in ["queued", "in_progress"]:
+            if progress_placeholder:
+                progress_placeholder.write(f"Assistant status: {run.status}")
             time.sleep(1)
             run = client.beta.threads.runs.retrieve(
                 thread_id=thread.id,
                 run_id=run.id
             )
+        
+        if progress_placeholder:
+            progress_placeholder.write(f"Assistant finished with status: {run.status}")
         
         if run.status != "completed":
             logger.error(f"Assistant run failed with status: {run.status}")
@@ -160,19 +168,35 @@ def batch_refine_keywords(keywords: List[str], brand_names: List[str], city: str
     if len(keywords) <= batch_size:
         return refine_keywords(keywords, brand_names, city)
     
+    # Show batch processing in UI if running in Streamlit
+    progress_bar = st.progress(0) if 'st' in globals() else None
+    status_text = st.empty() if 'st' in globals() else None
+    
     # Create assistant once to reuse across batches
     assistant_id = create_assistant()
     
     refined_keywords = []
+    total_batches = (len(keywords) // batch_size) + (1 if len(keywords) % batch_size > 0 else 0)
+    
     for i in range(0, len(keywords), batch_size):
         batch = keywords[i:i+batch_size]
-        logger.info(f"Processing batch {i//batch_size + 1}/{(len(keywords) // batch_size) + 1} ({len(batch)} keywords)")
+        batch_num = i // batch_size + 1
+        
+        if status_text:
+            status_text.write(f"Processing batch {batch_num}/{total_batches} ({len(batch)} keywords)")
+        logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} keywords)")
         
         batch_refined = refine_keywords(batch, brand_names, city, assistant_id)
         refined_keywords.extend(batch_refined)
+        
+        if progress_bar:
+            progress_bar.progress(batch_num / total_batches)
     
     # Remove duplicates
     refined_keywords = list(set(refined_keywords))
+    
+    if status_text:
+        status_text.write(f"✅ Completed - refined {len(keywords)} keywords to {len(refined_keywords)} keywords")
     
     return refined_keywords
 
