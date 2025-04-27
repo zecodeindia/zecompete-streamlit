@@ -1,70 +1,66 @@
-# === UPDATED enhanced_keyword_pipeline.py ===
+# === FINAL enhanced_keyword_pipeline.py (Strict Business Name Locking Version) ===
 """
-Enhanced Keyword Pipeline using Smart Brand+Location Refinement
+Enhanced Keyword Pipeline (Strict Business Name Version)
 """
-import os
-import sys
-import traceback
+import json
 import logging
-import streamlit as st
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 import pandas as pd
+from src.openai_keyword_refiner import strict_lock_business_names
+from src.fetch_volume import fetch_volume
+from src.embed_upsert import upsert_keywords
 
-# Import the existing keyword generation functions
-from src.keyword_pipeline import (
-    extract_businesses_from_pinecone,
-    extract_location_from_business,
-    extract_brand_name,
-    generate_location_keywords,
-    get_search_volumes,
-    run_keyword_pipeline
-)
-
-# Import our new smart refiner
-from src.openai_keyword_refiner import smart_batch_refine_keywords
-
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Fixed Assistant ID (for traceability)
-FIXED_ASSISTANT_ID = "asst_aaWtxqys7xZZph6YQOSVP6Wk"
+# === Core Public API ===
 
-# === Main function ===
-
-def run_enhanced_keyword_pipeline(city: str) -> bool:
+def generate_keywords_and_search_volume(business_entries: List[Dict[str, str]], brand_names: List[str], city: str) -> pd.DataFrame:
     """
-    Main function to run enhanced keyword generation with smart refinement.
+    Full pipeline to:
+    1. Lock keywords from business names
+    2. Fetch search volume
+    3. Return enriched dataframe
     """
-    try:
-        # Step 1: Extract businesses from Pinecone
-        businesses = extract_businesses_from_pinecone()
-        if not businesses:
-            logger.warning("No businesses found for keyword extraction.")
-            return False
+    # Step 1: Generate keywords (strict locking)
+    logger.info("🔵 Starting strict keyword locking...")
+    keywords = strict_lock_business_names(business_entries)
 
-        brand_names = sorted(set(extract_brand_name(b.get("name", "")) for b in businesses))
-        logger.info(f"Detected brands: {brand_names}")
+    logger.info(f"✅ Locked {len(keywords)} clean keywords.")
 
-        # Step 2: Smart refinement using business names + address + suggest fallback
-        refined_keywords = smart_batch_refine_keywords(businesses, brand_names, city)
+    # Step 2: Fetch search volume using DataForSEO or similar
+    logger.info("🔵 Fetching search volume data...")
+    search_volume_df = fetch_volume(keywords, city)
 
-        if not refined_keywords:
-            logger.error("Keyword refinement failed.")
-            return False
+    logger.info(f"✅ Fetched search volume for {len(search_volume_df)} keywords.")
 
-        # Step 3: Fetch search volumes
-        search_volume_df = get_search_volumes(refined_keywords)
+    return search_volume_df
 
-        if search_volume_df.empty:
-            logger.error("No search volume data retrieved.")
-            return False
+def push_keywords_to_pinecone(df: pd.DataFrame, brand: str, city: str):
+    """
+    Push keyword vectors to Pinecone
+    """
+    logger.info("🔵 Pushing keyword embeddings to Pinecone...")
+    upsert_keywords(df, brand, city)
+    logger.info("✅ Keywords successfully upserted to Pinecone.")
 
-        # Step 4: Save results
-        search_volume_df.to_csv("keyword_volumes.csv", index=False)
-        logger.info(f"✅ Saved {len(search_volume_df)} refined keywords.")
-        return True
+# === Example main run (for testing) ===
+if __name__ == "__main__":
+    business_entries = [
+        {"name": "Zecode RR Nagar"},
+        {"name": "Zecode HSR Layout"},
+        {"name": "Zecode Vidyaranyapura"},
+        {"name": "Zecode Kammanahalli"},
+        {"name": "Zecode Hesarghatta Road"},
+        {"name": "Zecode TC Palya Road"},
+        {"name": "Zecode Basaveshwar Nagar"},
+        {"name": "Zecode Yelahanka"},
+        {"name": "Zecode Nagavara"},
+        {"name": "Zecode Vignan Nagar"}
+    ]
 
-    except Exception as e:
-        logger.error(f"Error in enhanced keyword pipeline: {str(e)}")
-        return False
+    brand_names = ["Zecode"]
+    city = "Bengaluru"
+
+    df = generate_keywords_and_search_volume(business_entries, brand_names, city)
+    print(df.head())
