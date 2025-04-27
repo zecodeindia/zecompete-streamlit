@@ -1,6 +1,7 @@
-# test_keyword_refinement.py
+# Modified src/test_keyword_refinement.py
 """
 Test script to verify the OpenAI Assistant integration for keyword refinement.
+Uses a fixed Assistant ID instead of creating a new one.
 Run this script directly to test the functionality.
 """
 
@@ -23,36 +24,12 @@ except ImportError:
 # Initialize OpenAI client
 client = OpenAI(api_key=get_api_key())
 
-def create_test_assistant():
-    """Create a test assistant and return its ID"""
-    print("Creating test assistant...")
-    
-    assistant = client.beta.assistants.create(
-        name="Keyword Refiner Test",
-        instructions="""You are an expert in SEO and local search marketing.
-Your task is to clean and refine keyword suggestions related to local businesses.
-Given a list of raw keyword suggestions, you must:
-Focus ONLY on keywords that include a recognizable brand name and a location (like "Zecode Indiranagar", "Zecode RR Nagar", "Zecode Whitefield Bengaluru").
-If location is missing but can be inferred from context (e.g., nearby localities in the city), suggest the corrected form.
-Remove any keywords that focus on unrelated intents such as "timings", "open hours", "phone number", "contact", "review", "ratings", "directions", unless explicitly instructed otherwise.
-Ensure each final keyword is natural, realistic, and something a real user would type into Google when searching for a business outlet.
-Format the output as a clean JSON array, like:
-[
-  "Zecode Indiranagar",
-  "Zecode RR Nagar",
-  "Zecode Whitefield Bengaluru"
-]
-Do not explain or add extra text. Return only the JSON list.""",
-        model="gpt-4o-mini",
-        tools=[],
-    )
-    
-    print(f"Created assistant with ID: {assistant.id}")
-    return assistant.id
+# Fixed Assistant ID - use this specific Assistant
+FIXED_ASSISTANT_ID = "asst_aaWtxqys7xZZph6YQOSVP6Wk"
 
-def test_keyword_refinement(assistant_id):
+def test_keyword_refinement():
     """Test the keyword refinement with a sample list of keywords"""
-    print("Testing keyword refinement...")
+    print("Testing keyword refinement with fixed Assistant ID...")
     
     # Create a thread
     thread = client.beta.threads.create()
@@ -92,10 +69,10 @@ Return ONLY the JSON array of clean keywords."""
     )
     
     # Run the assistant
-    print("Running the assistant...")
+    print(f"Running the assistant with fixed ID: {FIXED_ASSISTANT_ID}...")
     run = client.beta.threads.runs.create(
         thread_id=thread.id,
-        assistant_id=assistant_id
+        assistant_id=FIXED_ASSISTANT_ID
     )
     
     # Wait for the run to complete
@@ -157,8 +134,8 @@ Return ONLY the JSON array of clean keywords."""
 def run_test():
     """Run the complete test"""
     try:
-        assistant_id = create_test_assistant()
-        test_keyword_refinement(assistant_id)
+        print(f"Testing with fixed Assistant ID: {FIXED_ASSISTANT_ID}")
+        test_keyword_refinement()
         print("\nTest completed successfully!")
     except Exception as e:
         print(f"Test failed with error: {str(e)}")
@@ -175,12 +152,13 @@ def streamlit_test():
     st.title("OpenAI Assistant Keyword Refinement Test")
     
     # Display description
-    st.markdown("""
+    st.markdown(f"""
     This tool tests the OpenAI Assistant integration for keyword refinement.
+    It uses a fixed Assistant ID: `{FIXED_ASSISTANT_ID}`
+    
     It will:
-    1. Create a test assistant
-    2. Submit sample keywords for refinement
-    3. Display the results
+    1. Submit sample keywords for refinement
+    2. Display the results
     """)
     
     # Custom keywords option
@@ -193,11 +171,8 @@ def streamlit_test():
     city = st.text_input("City:", "Bengaluru")
     
     if st.button("Run Test"):
-        with st.spinner("Creating test assistant..."):
+        with st.spinner(f"Testing keyword refinement with Assistant {FIXED_ASSISTANT_ID}..."):
             try:
-                assistant_id = create_test_assistant()
-                st.success(f"Created test assistant with ID: {assistant_id}")
-                
                 # Get keywords (custom or default)
                 if custom_keywords:
                     test_keywords = [kw.strip() for kw in custom_keywords.split("\n") if kw.strip()]
@@ -239,10 +214,10 @@ Return ONLY the JSON array of clean keywords."""
                 )
                 
                 # Run the assistant
-                with st.spinner("Running the assistant..."):
+                with st.spinner(f"Running the assistant with ID {FIXED_ASSISTANT_ID}..."):
                     run = client.beta.threads.runs.create(
                         thread_id=thread.id,
-                        assistant_id=assistant_id
+                        assistant_id=FIXED_ASSISTANT_ID
                     )
                     
                     # Create a progress indicator
