@@ -8,6 +8,7 @@ import os
 import sys
 import traceback
 import logging
+import streamlit as st
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
@@ -28,6 +29,43 @@ from src.openai_keyword_refiner import batch_refine_keywords
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def generate_keyword_suggestions(business_names: List[str], city: str) -> List[str]:
+    """
+    Generate keyword suggestions from business names
+    """
+    suggested_keywords = []
+    
+    # Get brand names
+    brand_names = [extract_brand_name(name) for name in business_names if name]
+    brand_names = [name for name in brand_names if name]
+    
+    # For each business location
+    for name in business_names:
+        if not name:
+            continue
+            
+        brand = extract_brand_name(name)
+        location = extract_location_from_business({"name": name})
+        
+        if not brand:
+            continue
+            
+        # Generate variations - simple examples
+        suggested_keywords.append(f"{brand} {location}" if location else f"{brand} {city}")
+        suggested_keywords.append(f"{brand} in {city}")
+        
+        # Add location variations if we have them
+        if location:
+            suggested_keywords.append(f"{brand} {location} {city}")
+            suggested_keywords.append(f"{brand} in {location}")
+            suggested_keywords.append(f"{brand} {location} branch")
+            
+    # Remove duplicates and empty entries
+    suggested_keywords = [kw for kw in suggested_keywords if kw and len(kw) > 5]
+    suggested_keywords = list(set(suggested_keywords))
+    
+    return suggested_keywords
+
 def run_enhanced_keyword_pipeline(city: str = "Bengaluru", refine_keywords: bool = True) -> bool:
     """
     Run the enhanced keyword pipeline with OpenAI Assistant-based refinement.
@@ -47,6 +85,8 @@ def run_enhanced_keyword_pipeline(city: str = "Bengaluru", refine_keywords: bool
         
         if not businesses:
             logger.warning("No business data found in Pinecone")
+            if 'st' in globals():
+                st.warning("⚠️ No business data found in Pinecone. Please run data scraping first.")
             return False
         
         # Add city to businesses without one
@@ -64,39 +104,60 @@ def run_enhanced_keyword_pipeline(city: str = "Bengaluru", refine_keywords: bool
                     brand_names.append(brand)
         
         logger.info(f"Extracted {len(brand_names)} unique brand names")
+        if 'st' in globals():
+            st.write(f"Found {len(businesses)} businesses with {len(brand_names)} unique brands")
+            st.write("Sample brands:", ", ".join(brand_names[:5]))
         
-        # Generate location-focused keywords
-        raw_keywords = generate_location_keywords(businesses)
+        # Generate more keyword variations first to ensure we have enough to work with
+        raw_keywords = generate_keyword_suggestions(
+            [business.get("name", "") for business in businesses if business.get("name")], 
+            city
+        )
         
         if not raw_keywords:
             logger.warning("No keywords generated")
+            if 'st' in globals():
+                st.warning("⚠️ No keywords generated from business data")
             return False
         
         logger.info(f"Generated {len(raw_keywords)} raw keywords")
+        if 'st' in globals():
+            st.write(f"Generated {len(raw_keywords)} initial keyword suggestions")
+            with st.expander("View sample raw keywords"):
+                for kw in raw_keywords[:20]:
+                    st.write(f"- {kw}")
         
         # Refine keywords using OpenAI Assistant if enabled
+        keywords = raw_keywords
         if refine_keywords:
-            logger.info("Starting keyword refinement with OpenAI Assistant")
+            if 'st' in globals():
+                st.write("Starting AI-powered keyword refinement...")
+                
             refined_keywords = batch_refine_keywords(raw_keywords, brand_names, city)
             
             if not refined_keywords:
                 logger.warning("Keyword refinement returned no results, using raw keywords")
-                keywords = raw_keywords
+                if 'st' in globals():
+                    st.warning("⚠️ Keyword refinement returned no results, using raw keywords")
             else:
                 logger.info(f"Refined {len(raw_keywords)} keywords to {len(refined_keywords)} keywords")
+                if 'st' in globals():
+                    st.success(f"✅ Refined {len(raw_keywords)} keywords to {len(refined_keywords)} keywords")
+                    with st.expander("View sample refined keywords"):
+                        for kw in refined_keywords[:20]:
+                            st.write(f"- {kw}")
                 keywords = refined_keywords
-        else:
-            keywords = raw_keywords
-        
-        # Display sample keywords
-        sample_size = min(10, len(keywords))
-        logger.info(f"Sample keywords: {', '.join(keywords[:sample_size])}")
         
         # Get search volumes
+        if 'st' in globals():
+            st.write(f"Getting search volumes for {len(keywords)} keywords...")
+            
         df = get_search_volumes(keywords)
         
         if df.empty:
             logger.warning("No search volume data obtained")
+            if 'st' in globals():
+                st.error("❌ No search volume data obtained")
             return False
         
         # Add city to DataFrame
@@ -104,9 +165,15 @@ def run_enhanced_keyword_pipeline(city: str = "Bengaluru", refine_keywords: bool
         
         # Upsert to Pinecone
         from src.embed_upsert import upsert_keywords
+        
+        if 'st' in globals():
+            st.write("Uploading keyword data to Pinecone...")
+            
         upsert_keywords(df, city)
         
         logger.info("Successfully uploaded keyword data to Pinecone")
+        if 'st' in globals():
+            st.success("✅ Successfully uploaded keyword data to Pinecone")
         
         # Export to CSV for visualization
         try:
@@ -122,14 +189,40 @@ def run_enhanced_keyword_pipeline(city: str = "Bengaluru", refine_keywords: bool
             df.to_csv("keyword_volumes.csv", index=False)
             
             logger.info(f"Exported keyword data to CSV: {csv_path}")
+            if 'st' in globals():
+                st.success(f"✅ Exported keyword data to CSV")
+                
+                # Show dataframe
+                st.subheader("Generated Keywords with Search Volumes")
+                st.dataframe(
+                    df[["keyword", "search_volume", "competition", "cpc"]]
+                    .sort_values("search_volume", ascending=False)
+                    .head(20),
+                    use_container_width=True
+                )
+                
+                # Download option
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Download Keywords as CSV",
+                    data=csv,
+                    file_name='generated_keywords.csv',
+                    mime='text/csv',
+                )
+                
         except Exception as e:
             logger.warning(f"Could not export to CSV: {str(e)}")
+            if 'st' in globals():
+                st.warning(f"⚠️ Could not export to CSV: {str(e)}")
         
         return True
     
     except Exception as e:
         logger.error(f"Error in enhanced keyword pipeline: {str(e)}")
         traceback.print_exc()
+        if 'st' in globals():
+            st.error(f"❌ Error in enhanced keyword pipeline: {str(e)}")
+            st.code(traceback.format_exc())
         return False
 
 def generate_enhanced_keywords_for_businesses(business_names: List[str], city: str, refine_keywords: bool = True) -> List[str]:
@@ -155,17 +248,8 @@ def generate_enhanced_keywords_for_businesses(business_names: List[str], city: s
     brand_names = [extract_brand_name(name) for name in business_names if name]
     brand_names = [brand for brand in brand_names if brand]
     
-    # Convert business names to the format expected by generate_location_keywords
-    businesses = []
-    for name in business_names:
-        businesses.append({
-            "name": name,
-            "city": city,
-            "location": extract_location_from_business({"name": name, "city": city}) 
-        })
-    
-    # Use existing function to generate keywords
-    raw_keywords = generate_location_keywords(businesses)
+    # Generate initial keywords using the existing function
+    raw_keywords = generate_keyword_suggestions(business_names, city)
     
     # Refine keywords using OpenAI Assistant if enabled
     if refine_keywords:
