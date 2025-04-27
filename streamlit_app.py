@@ -11,7 +11,8 @@ try:
     openai_assistant_ok = True
 except Exception as e:
     openai_assistant_ok = False
-    print(f"Error importing OpenAI Assistant modules: {str(e)}")
+    import traceback
+    print("⚠️ Detailed import error:", traceback.format_exc())
 
 # Set up the app
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
