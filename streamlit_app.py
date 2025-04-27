@@ -16,6 +16,7 @@ from src.config import secret
 from src.scrape_maps import run_scrape, run_apify_task
 from src.task_manager import add_task, process_all_tasks, get_running_tasks
 from src.webhook_handler import process_dataset_directly, create_apify_webhook
+from src.keyword_pipeline import run_business_keyword_pipeline as run_enhanced_keyword_pipeline
 
 # Basic app setup
 st.set_page_config(page_title="Business Keywords & Reporting", layout="wide")
