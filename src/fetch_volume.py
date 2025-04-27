@@ -141,6 +141,8 @@ def fetch_volume(
                 # If no trend data found but requested, generate some synthetic data
                 elif include_trends:
                     # Generate synthetic trend data based on current volume
+                    raw_volume = r.get("search_volume")
+                    search_volume = int(r.get("search_volume") or 0)
                     synthetic_trends = _generate_synthetic_trends(search_volume)
                     keyword_data["monthly_trends"] = synthetic_trends
                     print(f"Generated synthetic trend data for '{keyword}'")
