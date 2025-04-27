@@ -1,6 +1,6 @@
-# === NEW openai_keyword_refiner.py ===
+# === FINAL Corrected openai_keyword_refiner.py ===
 """
-OpenAI Assistant + Smart Keyword Refiner
+OpenAI Assistant + Smart Keyword Refiner (Fully Cleaned Version)
 """
 import json, time, logging
 from typing import List, Dict, Any
@@ -74,13 +74,13 @@ def refine_keywords_openai(keywords: List[str], brand_names: List[str], city: st
 
 def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_names: List[str], city: str) -> List[str]:
     """
-    Ultra-precise version:
-    1. Business name first
-    2. Address fallback
-    3. No OpenAI modification unless critical
-    4. Deduplicate final keywords
+    Final smart refinement with:
+    1. Protecting business names
+    2. Cleaning commas and extra spaces
+    3. Deduplicating keywords
+    4. Skipping OpenAI unless absolutely needed
     """
-    initial_keywords = set()  # Use set to auto-remove duplicates
+    initial_keywords = set()
 
     for entry in business_entries:
         name = entry.get("name", "").strip()
@@ -99,11 +99,23 @@ def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_na
                 for suggest in get_google_suggest_keywords(brand):
                     initial_keywords.add(suggest.strip())
 
-    logger.info(f"✅ Final deduplicated keyword count: {len(initial_keywords)}")
+    keywords = list(initial_keywords)
 
-    # Now keywords are clean, deduplicated
-    return list(initial_keywords)
+    logger.info(f"✅ Final deduplicated keyword count: {len(keywords)}")
 
+    # Check if refinement is needed
+    needs_refinement = False
+    for kw in keywords:
+        if ("location" in kw.lower()) or (len(kw.strip().split()) < 2):
+            needs_refinement = True
+            break
+
+    if not needs_refinement:
+        logger.info("✅ Keywords look clean. Skipping OpenAI refinement.")
+        return keywords
+    else:
+        logger.info("🔵 Keywords need refinement. Sending to OpenAI.")
+        return refine_keywords_openai(keywords, brand_names, city)
 
 # === Helper to guess brand ===
 def extract_brand_from_name(name: str, brand_names: List[str]) -> str:
@@ -115,9 +127,9 @@ def extract_brand_from_name(name: str, brand_names: List[str]) -> str:
 # === Main (for testing) ===
 if __name__ == "__main__":
     entries = [
-        {"name": "Zecode", "address": "Indiranagar, Bengaluru"},
-        {"name": "Zecode Whitefield", "address": "Whitefield, Bengaluru"},
-        {"name": "Zecode", "address": ""},
+        {"name": "Zecode RR Nagar", "address": "RR Nagar, Bengaluru"},
+        {"name": "Zecode HSR Layout", "address": "HSR Layout, Bengaluru"},
+        {"name": "Zecode", "address": "Indiranagar, Bengaluru"}
     ]
     brands = ["Zecode"]
     city = "Bengaluru"
