@@ -1,53 +1,20 @@
-import os, itertools, pandas as pd, streamlit as st
-import time, json, threading, requests, secrets
-import datetime
-import plotly.express as px
+import streamlit as st
+import pandas as pd
+from pinecone import Pinecone
 from openai import OpenAI
+import time
 
-# Import the new components
-try:
-    from enhanced_keyword_pipeline import (
-        extract_business_names_from_pinecone,
-        preprocess_business_names,
-        get_search_volume_with_history,
-        run_business_keyword_pipeline,
-        combine_data_for_assistant
-    )
-    from openai_assistant_reporting import AssistantReporter
-    from business_keywords_tab import render_business_keywords_tab
-    enhanced_pipeline_imported = True
-except ImportError:
-    enhanced_pipeline_imported = False
-    import traceback
-    print("⚠️ Detailed import error:", traceback.format_exc())
+# Import the core components
+from business_keywords_tab import render_business_keywords_tab
+from openai_assistant_reporting import render_assistant_report_tab
+from src.config import secret
+from src.scrape_maps import run_scrape, run_apify_task
+from src.task_manager import add_task, process_all_tasks, get_running_tasks
+from src.webhook_handler import process_dataset_directly, create_apify_webhook
 
-# Add imports for OpenAI Assistant integration
-try:
-    from src.openai_keyword_refiner import refine_keywords, batch_refine_keywords, get_assistant_id
-    from src.enhanced_keyword_pipeline import run_enhanced_keyword_pipeline, generate_enhanced_keywords_for_businesses
-    openai_assistant_ok = True
-except Exception as e:
-    openai_assistant_ok = False
-    import traceback
-    print("⚠️ Detailed import error:", traceback.format_exc())
-
-# Set up the app
-st.set_page_config(page_title="Competitor Mapper", layout="wide")
-st.title("🗺️ Competitor Location & Demand Explorer")
-
-# --- Helper function to safely clear a namespace ---
-def safe_clear_namespace(index, namespace_name: str):
-    """Clear a namespace from Pinecone safely if it exists."""
-    try:
-        namespaces = index.describe_index_stats().namespaces
-        if namespace_name in namespaces:
-            index.delete(delete_all=True, namespace=namespace_name)
-            return True
-        else:
-            return False
-    except Exception as e:
-        print(f"Error clearing namespace {namespace_name}: {e}")
-        return False
+# Basic app setup
+st.set_page_config(page_title="Business Keywords & Reporting", layout="wide")
+st.title("🔍 Business Keywords & Advanced Reporting")
 
 # Initialize session state
 if "auto_refresh" not in st.session_state:
@@ -61,748 +28,78 @@ if "last_city" not in st.session_state:
 
 # Initialize Pinecone
 try:
-    from src.config import secret
-    from pinecone import Pinecone
     pc = Pinecone(api_key=secret("PINECONE_API_KEY"))
     idx = pc.Index("zecompete")
-
-    if st.button("🔄 Clear ALL Data from Pinecone", type="primary"):
-        with st.spinner("Clearing all data from Pinecone..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ All data cleared from Pinecone successfully!")
-            st.rerun()
-
-    pinecone_success = True
-    st.success("✅ Successfully connected to Pinecone!")
+    st.success("✅ Connected to Pinecone!")
 except Exception as e:
-    st.error(f"Error initializing Pinecone: {str(e)}")
-    pinecone_success = False
-    
-# Import required modules with error handling
-import_success = True
-all_modules_ok = True
+    st.error(f"Error connecting to Pinecone: {str(e)}")
 
-try:
-    from src.run_pipeline import run
-    run_module_ok = True
-except Exception as e:
-    st.error(f"Error importing run_pipeline module: {str(e)}")
-    run_module_ok = False
-    all_modules_ok = False
+# Create tabs
+tabs = st.tabs(["Business Keywords", "Advanced Reporting", "Data Collection"])
 
-try:
-    from src.analytics import insight_question
-    analytics_module_ok = True
-except Exception as e:
-    st.error(f"Error importing analytics module: {str(e)}")
-    analytics_module_ok = False
-    all_modules_ok = False
-
-try:
-    from src.embed_upsert import _embed, upsert_places
-    embed_module_ok = True
-except Exception as e:
-    st.error(f"Error importing embed_upsert module: {str(e)}")
-    embed_module_ok = False
-    all_modules_ok = False
-
-try:
-    from src.scrape_maps import run_scrape, run_apify_task, check_task_status
-    from src.task_manager import add_task, process_all_tasks, get_running_tasks, get_pending_tasks
-    from src.webhook_handler import process_dataset_directly, create_apify_webhook
-    scrape_module_ok = True
-except Exception as e:
-    st.error(f"Error importing scrape/task modules: {str(e)}")
-    scrape_module_ok = False
-    all_modules_ok = False
-
-try:
-    from src.keyword_pipeline import run_keyword_pipeline, get_business_names_from_pinecone
-    keyword_module_ok = True
-except Exception as e:
-    st.error(f"Error importing keyword_pipeline module: {str(e)}")
-    keyword_module_ok = False
-    all_modules_ok = False
-
-import_success = all_modules_ok
-
-# API key checks
-api_keys_ok = True
-api_key_messages = []
-
-try:
-    pinecone_key = secret("PINECONE_API_KEY")
-    if not pinecone_key:
-        api_keys_ok = False
-        api_key_messages.append("❌ Pinecone API key is missing")
-    else:
-        api_key_messages.append("✅ Pinecone API key is set")
-except:
-    api_keys_ok = False
-    api_key_messages.append("❌ Pinecone API key is missing")
-
-try:
-    openai_key = secret("OPENAI_API_KEY")
-    if not openai_key:
-        api_keys_ok = False
-        api_key_messages.append("❌ OpenAI API key is missing")
-    else:
-        api_key_messages.append("✅ OpenAI API key is set")
-except:
-    api_keys_ok = False
-    api_key_messages.append("❌ OpenAI API key is missing")
-
-try:
-    apify_token = secret("APIFY_TOKEN")
-    if not apify_token:
-        api_key_messages.append("⚠️ Apify token is missing (needed for Google Maps scraping)")
-    else:
-        api_key_messages.append("✅ Apify token is set")
-except:
-    api_key_messages.append("⚠️ Apify token is missing (needed for Google Maps scraping)")
-
-try:
-    dfs_user = secret("DFS_USER")
-    dfs_pass = secret("DFS_PASS")
-    if not dfs_user or not dfs_pass:
-        api_key_messages.append("⚠️ DataForSEO credentials are missing (search volume will be simulated)")
-    else:
-        api_key_messages.append("✅ DataForSEO credentials are set")
-except:
-    api_key_messages.append("⚠️ DataForSEO credentials are missing (search volume will be simulated)")
-
-# Webhook secret helper
-def get_webhook_secret():
-    try:
-        return secret("WEBHOOK_SECRET")
-    except:
-        if "webhook_secret" not in st.session_state:
-            st.session_state.webhook_secret = secrets.token_hex(16)
-        return st.session_state.webhook_secret
-
-def display_keyword_trends():
-    """Display keyword search volume trends"""
-    # Check if trend data exists
-    trend_file_path = "keyword_volumes.csv"
-    if not os.path.exists(trend_file_path):
-        st.info("No trend data available. Please run the keyword pipeline first to generate trend data.")
-        if st.button("Generate Keywords with Trends"):
-            try:
-                from src.keyword_pipeline import run_keyword_pipeline
-                city = st.session_state.get("last_city", "Bengaluru")
-                with st.spinner(f"Generating keywords with trend data for {city}..."):
-                    success = run_keyword_pipeline(city)
-                    if success:
-                        st.success(f"✅ Generated keywords with trend data for {city}")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to generate keywords")
-            except Exception as e:
-                st.error(f"Error generating keywords: {str(e)}")
-        return
-    
-    # Load trend data
-    try:
-        df = pd.read_csv(trend_file_path)
-        
-        # Ensure proper data types
-        df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0).astype(int)
-        df["month"] = pd.to_numeric(df["month"], errors="coerce").fillna(0).astype(int)
-        df["search_volume"] = pd.to_numeric(df["search_volume"], errors="coerce").fillna(0).astype(int)
-        
-        # Create date field for better visualization
-        df["date"] = pd.to_datetime(df[["year", "month"]].assign(day=1))
-        
-        # Get unique keywords
-        keywords = sorted(df["keyword"].unique().tolist())
-        
-        # Keyword selection
-        selected_keywords = st.multiselect(
-            "Select Keywords to Compare",
-            options=keywords,
-            default=keywords[:3] if len(keywords) >= 3 else keywords
-        )
-        
-        if not selected_keywords:
-            st.warning("Please select at least one keyword to visualize trends.")
-            return
-        
-        # Filter data for selected keywords
-        filtered_df = df[df["keyword"].isin(selected_keywords)]
-        
-        # Create line chart with Plotly
-        fig = px.line(
-            filtered_df,
-            x="date",
-            y="search_volume",
-            color="keyword",
-            markers=True,
-            title="Keyword Search Volume Trends",
-            labels={"date": "Date", "search_volume": "Monthly Search Volume", "keyword": "Keyword"}
-        )
-        
-        # Display the chart
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Display metrics for each keyword
-        st.subheader("Trend Metrics")
-        
-        # Create columns for metrics
-        cols = st.columns(min(len(selected_keywords), 3))
-        
-        for i, keyword in enumerate(selected_keywords):
-            keyword_data = filtered_df[filtered_df["keyword"] == keyword].sort_values("date")
-            
-            if len(keyword_data) >= 2:
-                first_volume = keyword_data.iloc[0]["search_volume"]
-                last_volume = keyword_data.iloc[-1]["search_volume"]
-                max_volume = keyword_data["search_volume"].max()
-                min_volume = keyword_data["search_volume"].min()
-                avg_volume = keyword_data["search_volume"].mean()
-                
-                change = last_volume - first_volume
-                percent_change = (change / first_volume * 100) if first_volume > 0 else 0
-                
-                with cols[i % len(cols)]:
-                    st.metric(
-                        label=keyword,
-                        value=f"{int(last_volume)} searches",
-                        delta=f"{change:+d} ({percent_change:.1f}%)"
-                    )
-                    st.caption(f"Avg: {avg_volume:.1f} | Min: {min_volume} | Max: {max_volume}")
-        
-        # Display raw data option
-        if st.checkbox("Show Raw Trend Data"):
-            st.dataframe(
-                filtered_df[["keyword", "date", "search_volume", "competition", "cpc"]].sort_values(
-                    ["keyword", "date"]
-                ),
-                use_container_width=True
-            )
-        
-        # Download option
-        csv = filtered_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="⬇️ Download Trend Data as CSV",
-            data=csv,
-            file_name=f"keyword_trends_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-        
-    except Exception as e:
-        st.error(f"Error loading or processing trend data: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
-
-# Tabs
-tabs = st.tabs([
-    "Run Analysis", 
-    "Auto Integration", 
-    "Keywords & Search Volume", 
-    "Keyword Trends",
-    "Business Keywords",  # New tab
-    "Advanced Reporting",  # New tab
-    "Manual Upload", 
-    "Ask Questions", 
-    "Explore Data", 
-    "Diagnostic"
-])
-
-# -------------------
-# Tab 1: Run Analysis
-# -------------------
+# Render the Business Keywords tab
 with tabs[0]:
-    st.header("Run Analysis")
+    render_business_keywords_tab()
 
-    with st.expander("API Key Status", expanded=not api_keys_ok):
-        for msg in api_key_messages:
-            st.write(msg)
-        st.info("Add missing API keys in Streamlit secrets or .streamlit/secrets.toml file")
-
-    if st.button("🔄 Clear Previous Data", key="clear_tab_data"):
-        with st.spinner("Clearing all data from Pinecone..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ All data cleared!")
-            st.cache_data.clear()
-
-    brands = st.text_input("Brands (comma)", "Zudio, Max Fashion, Zara, H&M, Trends")
-    cities = st.text_input("Cities (comma)", "Bengaluru, Hyderabad")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("Run Manual Pipeline", key="run_manual"):
-            if not run_module_ok:
-                st.error("Run pipeline module not available.")
-            else:
-                log_container = st.container()
-                log_container.subheader("Processing Logs")
-
-                log_container.write("Clearing existing data...")
-                safe_clear_namespace(idx, "maps")
-                safe_clear_namespace(idx, "keywords")
-
-                for b, c in itertools.product(
-                        map(str.strip, brands.split(",")),
-                        map(str.strip, cities.split(","))):
-                    log_container.write(f"Processing {b} in {c}...")
-                    try:
-                        run(b, c)
-                        log_container.success(f"✅ Completed {b} in {c}")
-                    except Exception as e:
-                        log_container.error(f"❌ Error processing {b} in {c}: {e}")
-                        import traceback
-                        log_container.code(traceback.format_exc())
-
-                st.success("Data ready!")
-                st.cache_data.clear()
-                st.rerun()
-
-    with col2:
-        task_id = st.text_input("Apify Task ID", "zecodemedia~google-maps-scraper-task")
-        if st.button("Run with Apify (Automated)", key="run_automated"):
-            if not scrape_module_ok:
-                st.error("Apify/scrape modules not available.")
-            else:
-                log_container = st.container()
-                log_container.subheader("Automated Processing Logs")
-
-                log_container.write("Clearing existing data...")
-                safe_clear_namespace(idx, "maps")
-                safe_clear_namespace(idx, "keywords")
-
-                st.session_state.auto_refresh = True
-
-                brand_list = [b.strip() for b in brands.split(",")]
-                city_list = [c.strip() for c in cities.split(",")]
-
-                for b, c in itertools.product(brand_list, city_list):
-                    st.session_state.last_brand = b
-                    st.session_state.last_city = c
-                    run_id, _ = run_apify_task(b, c)
-                    if run_id:
-                        add_task(run_id, b, c)
-                        log_container.success(f"✅ Started Apify task for {b} in {c}")
-
-# --------------------------
-# Tab 2: Auto Integration
-# --------------------------
+# Render the Advanced Reporting tab
 with tabs[1]:
-    st.header("Auto Integration Setup")
+    render_assistant_report_tab()
 
-    if st.button("🔄 Clear Previous Data", key="clear_auto_tab"):
-        with st.spinner("Clearing all data from Pinecone..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ All data cleared!")
-
-    app_url = st.text_input("Your app URL (for webhooks)", "https://zecompete-app.streamlit.app")
-    callback_url = f"{app_url}/webhook"
-    webhook_secret = get_webhook_secret()
-
-    st.markdown("#### Webhook Configuration")
-    st.code(f"URL: {callback_url}")
-    st.code(f"Secret: {webhook_secret}")
-
-    task_id = st.text_input("Apify Task ID for webhook", "zecodemedia~google-maps-scraper-task")
-    if st.button("Set Up Webhook in Apify"):
-        webhook_id = create_apify_webhook(task_id, callback_url)
-        if webhook_id:
-            st.success(f"✅ Webhook created: {webhook_id}")
-        else:
-            st.error("❌ Failed to create webhook.")
-
-    dataset_id = st.text_input("Apify Dataset ID")
+# Add a simplified Data Collection tab for Apify integration
+with tabs[2]:
+    st.header("Data Collection via Apify")
+    
     col1, col2 = st.columns(2)
     with col1:
-        brand = st.text_input("Brand", "Zecode")
+        brand = st.text_input("Brand to search", "Zara")
     with col2:
-        city = st.text_input("City", "Bengaluru")
-
+        city = st.text_input("City to search", "Bengaluru")
+    
+    task_id = st.text_input("Apify Task ID", "zecodemedia~google-maps-scraper-task")
+    
+    if st.button("Run Apify Scraper"):
+        with st.spinner(f"Starting Apify task to search for {brand} in {city}..."):
+            st.session_state.last_brand = brand
+            st.session_state.last_city = city
+            run_id, _ = run_apify_task(brand, city)
+            if run_id:
+                add_task(run_id, brand, city)
+                st.success(f"✅ Started Apify task. It will run in the background.")
+                st.session_state.auto_refresh = True
+    
+    # Display running tasks
+    st.subheader("Running Tasks")
+    running_tasks = get_running_tasks()
+    if running_tasks:
+        for task in running_tasks:
+            st.info(f"Task for {task['brand']} in {task['city']} is running...")
+    else:
+        st.write("No tasks currently running")
+    
+    # Process pending tasks
+    if st.button("Process Completed Tasks"):
+        with st.spinner("Processing completed tasks..."):
+            processed = process_all_tasks()
+            if processed > 0:
+                st.success(f"✅ Processed {processed} completed tasks")
+            else:
+                st.info("No completed tasks to process")
+    
+    # Manual dataset processing
+    st.subheader("Process Dataset Directly")
+    dataset_id = st.text_input("Apify Dataset ID")
     if st.button("Process Dataset") and dataset_id:
         with st.spinner(f"Processing dataset {dataset_id}..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
             success = process_dataset_directly(dataset_id, brand, city)
             if success:
                 st.success(f"✅ Processed dataset for {brand} in {city}")
             else:
                 st.error("❌ Failed to process dataset")
 
-# -----------------------------------
-# Tab 3: Keywords & Search Volume
-# -----------------------------------
-with tabs[2]:
-    st.header("Keywords & Search Volume Analysis")
-
-    # Check if OpenAI Assistant modules are available
-    if not openai_assistant_ok:
-        st.warning("⚠️ OpenAI Assistant modules not found. Advanced keyword refinement features are not available.")
-    
-    # Clear previous keywords button
-    if st.button("🔄 Clear Previous Keywords", key="clear_kw_tab"):
-        with st.spinner("Clearing keyword data..."):
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ Cleared keyword data.")
-
-    # Input city name for keyword context
-    city = st.text_input("City for keywords", "Bengaluru")
-    
-    # Add a toggle for AI-powered keyword refinement (only if modules are available)
-    use_ai_refinement = False
-    if openai_assistant_ok:
-        use_ai_refinement = st.toggle("Use AI-powered keyword refinement", value=True)
-        
-        if use_ai_refinement:
-            st.info("""
-            🤖 **AI-powered keyword refinement** will:
-            - Focus only on brand name + location pairs
-            - Remove keywords with intents like "timings", "phone number", etc.
-            - Ensure keywords are natural and realistic
-            """)
-
-    # Check business names button
-    if st.button("🔎 Check Business Names"):
-        with st.spinner("Retrieving business names from Pinecone..."):
-            try:
-                business_names = get_business_names_from_pinecone()
-                if business_names:
-                    st.success(f"✅ Found {len(business_names)} business names.")
-                    st.write(business_names[:10])  # Show sample
-                else:
-                    st.warning("⚠️ No business names found in Pinecone (maps namespace may be empty).")
-            except Exception as e:
-                st.error(f"❌ Error fetching business names: {e}")
-
-    # Generate keywords button
-    if st.button("🚀 Generate Keywords & Get Search Volume"):
-        with st.spinner(f"Running {'enhanced' if use_ai_refinement else 'standard'} keyword generation pipeline..."):
-            try:
-                if use_ai_refinement and openai_assistant_ok:
-                    success = run_enhanced_keyword_pipeline(city)
-                else:
-                    success = run_keyword_pipeline(city)
-                
-                if success:
-                    st.success("✅ Keyword pipeline completed!")
-                    
-                    # Display generated keywords
-                    try:
-                        # Load the newly generated keywords from CSV
-                        if os.path.exists("keyword_volumes.csv"):
-                            kw_df = pd.read_csv("keyword_volumes.csv")
-                            
-                            # Display in a nice table
-                            st.subheader("Generated Keywords")
-                            st.dataframe(
-                                kw_df[["keyword", "search_volume", "competition", "cpc"]].sort_values(
-                                    by="search_volume", ascending=False
-                                ),
-                                use_container_width=True
-                            )
-                            
-                            # Option to download
-                            csv = kw_df.to_csv(index=False).encode("utf-8")
-                            st.download_button(
-                                label="⬇️ Download Keywords as CSV",
-                                data=csv,
-                                file_name="refined_keywords.csv",
-                                mime="text/csv"
-                            )
-                    except Exception as e:
-                        st.warning(f"Could not display keywords: {str(e)}")
-                else:
-                    st.error("❌ Keyword pipeline failed")
-            except Exception as e:
-                st.error(f"❌ Error running keyword pipeline: {e}")
-                import traceback
-                st.code(traceback.format_exc())
-
-    # Add a new expander for direct keyword refinement (only if modules are available)
-    if openai_assistant_ok:
-        with st.expander("Direct Keyword Refinement Tool"):
-            st.subheader("Refine Existing Keywords")
-            
-            raw_keywords = st.text_area(
-                "Enter raw keywords (one per line):",
-                placeholder="ZARA Bengaluru timings\nH&M Indiranagar directions\nLevi's Majestic opening hours"
-            )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                brand_input = st.text_input("Brand names (comma-separated):", "ZARA, H&M, Levi's")
-            
-            with col2:
-                refine_city = st.text_input("City for refinement:", city)
-            
-            if st.button("✨ Refine Keywords"):
-                if raw_keywords:
-                    keywords_list = [k.strip() for k in raw_keywords.split("\n") if k.strip()]
-                    brand_list = [b.strip() for b in brand_input.split(",") if b.strip()]
-                    
-                    with st.spinner("Refining keywords using AI..."):
-                        try:
-                            refined_keywords = refine_keywords(keywords_list, brand_list, refine_city)
-                            
-                            if refined_keywords:
-                                st.success(f"✅ Refined {len(keywords_list)} keywords to {len(refined_keywords)} keywords")
-                                
-                                # Display before and after
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.write("📝 Original Keywords:")
-                                    for kw in keywords_list:
-                                        st.write(f"- {kw}")
-                                
-                                with col2:
-                                    st.write("✨ Refined Keywords:")
-                                    for kw in refined_keywords:
-                                        st.write(f"- {kw}")
-                                
-                                # Option to use these refined keywords
-                                if st.button("Use These Refined Keywords"):
-                                    with st.spinner("Getting search volumes and uploading to Pinecone..."):
-                                        from src.keyword_pipeline import get_search_volumes
-                                        df = get_search_volumes(refined_keywords)
-                                        
-                                        if not df.empty:
-                                            # Add city to DataFrame
-                                            df = df.assign(city=refine_city)
-                                            
-                                            # Upsert to Pinecone
-                                            from src.embed_upsert import upsert_keywords
-                                            upsert_keywords(df, refine_city)
-                                            
-                                            # Also save to CSV
-                                            df.to_csv("keyword_volumes.csv", index=False)
-                                            
-                                            st.success("✅ Keywords processed and uploaded to Pinecone!")
-                                        else:
-                                            st.error("❌ Failed to get search volumes for refined keywords")
-                            else:
-                                st.warning("⚠️ Keyword refinement returned no results")
-                        except Exception as e:
-                            st.error(f"❌ Error during keyword refinement: {e}")
-                else:
-                    st.warning("Please enter some keywords to refine")
-
-# -----------------------------------
-# Tab 4: Keyword Trends
-# -----------------------------------
-with tabs[3]:
-    st.subheader("Keyword Search Volume Trends")
-    
-    # Call the function to display keyword trends
-    display_keyword_trends()
-
-# -----------------------------------
-# Tab 5: Business Keywords
-# -----------------------------------
-with tabs[4]:
-    if enhanced_pipeline_imported:
-        # Import and render the business keywords tab
-        render_business_keywords_tab()
-    else:
-        st.error("Business Keywords tab requires the enhanced_keyword_pipeline.py module.")
-        st.info("Please install the required modules to use this feature.")
-
-# -----------------------------------
-# Tab 6: Advanced Reporting
-# -----------------------------------
-with tabs[5]:
-    if enhanced_pipeline_imported:
-        # Import and render the assistant reporting tab
-        from openai_assistant_reporting import render_assistant_report_tab
-        render_assistant_report_tab()
-    else:
-        st.error("Advanced Reporting tab requires the openai_assistant_reporting.py module.")
-        st.info("Please install the required modules to use this feature.")
-
-# ---------------------
-# Tab 7: Manual Upload
-# ---------------------
-with tabs[6]:
-    st.header("Manual Upload (CSV)")
-
-    if st.button("🔄 Clear Previous Upload Data", key="clear_upload_tab"):
-        with st.spinner("Clearing uploaded data..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ Cleared previous upload data.")
-
-    uploaded_file = st.file_uploader("Upload Apify CSV", type=["csv"])
-
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df.head())
-
-        brand = st.text_input("Brand Name", "Zecode")
-        city = st.text_input("City Name", "Bengaluru")
-
-        if st.button("Upload to Pinecone"):
-            with st.spinner(f"Uploading data for {brand} in {city}..."):
-                upsert_places(df, brand, city)
-                st.success("✅ Upload completed!")
-
-# ----------------------
-# Tab 8: Ask Questions
-# ----------------------
-with tabs[7]:
-    st.header("Ask Questions About Data")
-
-    question = st.text_area("Your question")
-    
-    use_combined_data = st.checkbox("Use combined business and keyword data")
-    
-    if use_combined_data and enhanced_pipeline_imported:
-        if st.button("Get Combined Answer"):
-            if question:
-                try:
-                    # Get combined data
-                    combined_data = combine_data_for_assistant(question)
-                    
-                    # Initialize the reporter
-                    reporter = AssistantReporter()
-                    
-                    # Generate report
-                    with st.spinner("Generating comprehensive answer..."):
-                        answer = reporter.generate_report(combined_data, question)
-                        
-                        st.success("✅ Answer:")
-                        st.markdown(answer)
-                except Exception as e:
-                    st.error(f"Error answering question with combined data: {str(e)}")
-    else:
-        if st.button("Get Answer"):
-            if question:
-                try:
-                    answer = insight_question(question)
-                    st.success("✅ Answer:")
-                    st.write(answer)
-                except Exception as e:
-                    st.error(f"Error answering question: {str(e)}")
-
-# ------------------
-# Tab 9: Explore Stored Data
-# ------------------
-with tabs[8]:
-    st.header("Explore Stored Data")
-
-    if st.button("🔄 Refresh Data View", key="refresh_explore"):
-        st.cache_data.clear()
-        st.rerun()
-
-    if not pinecone_success:
-        st.error("Pinecone not connected.")
-    else:
-        try:
-            st.subheader("Pinecone Index Stats")
-
-            # Safely load index stats
-            stats = idx.describe_index_stats()
-
-            # Try to show stats cleanly
-            import json
-            try:
-                st.json(json.loads(json.dumps(stats)))  # Safe double-parse to handle bad src properties
-            except Exception as e:
-                st.warning(f"Could not render full index stats cleanly. ({e})")
-
-            # Show available namespaces
-            namespaces = stats.get("namespaces", {})
-            if namespaces:
-                for ns in namespaces:
-                    with st.expander(f"Namespace: {ns}"):
-                        dummy_vector = [0] * stats.get("dimension", 1536)
-                        results = idx.query(vector=dummy_vector, top_k=10, namespace=ns, include_metadata=True)
-                        if results.matches:
-                            data = [match.metadata for match in results.matches if match.metadata]
-                            if data:
-                                df = pd.DataFrame(data)
-                                st.dataframe(df)
-                            else:
-                                st.info("No metadata records found in this namespace.")
-                        else:
-                            st.info("No vectors found in this namespace.")
-            else:
-                st.info("No namespaces currently available.")
-        except Exception as e:
-            st.error(f"Error fetching Explore tab data: {e}")
-
-# ---------------------
-# Tab 10: Diagnostic
-# ---------------------
-with tabs[9]:
-    st.header("Diagnostic Info")
-
-    if st.button("🔄 Clear All Data", key="clear_diagnostic"):
-        with st.spinner("Clearing all data..."):
-            safe_clear_namespace(idx, "maps")
-            safe_clear_namespace(idx, "keywords")
-            st.success("✅ Cleared all data!")
-            st.cache_data.clear()
-            st.rerun()
-
-    st.subheader("API Key Status")
-    for msg in api_key_messages:
-        st.write(msg)
-
-    st.subheader("Module Import Status")
-    st.write(f"Run Pipeline Module: {'✅' if run_module_ok else '❌'}")
-    st.write(f"Analytics Module: {'✅' if analytics_module_ok else '❌'}")
-    st.write(f"Embed Module: {'✅' if embed_module_ok else '❌'}")
-    st.write(f"Scrape/Task Manager Module: {'✅' if scrape_module_ok else '❌'}")
-    st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
-    st.write(f"OpenAI Assistant Module: {'✅' if openai_assistant_ok else '❌'}")
-    
-    # Show status of new components
-    if enhanced_pipeline_imported:
-        st.write("Enhanced Keyword Pipeline: ✅")
-        st.write("OpenAI Assistant Reporting: ✅")
-    else:
-        st.write("Enhanced Keyword Pipeline: ❌")
-        st.write("OpenAI Assistant Reporting: ❌")
-        
-    # Add OpenAI Assistant test
-    if openai_assistant_ok:
-        st.subheader("OpenAI Assistant Test")
-        if st.button("Test OpenAI Assistant Connection"):
-            try:
-                from src.openai_keyword_refiner import get_assistant_id
-                
-                with st.spinner("Testing OpenAI Assistant connection..."):
-                    assistant_id = get_assistant_id()
-                    
-                    if assistant_id:
-                        st.success(f"✅ Successfully connected to OpenAI Assistant (ID: {assistant_id[:10]}...)")
-                    else:
-                        st.error("❌ Failed to get OpenAI Assistant ID")
-            except Exception as e:
-                st.error(f"❌ Error testing OpenAI Assistant: {e}")
-                import traceback
-                st.code(traceback.format_exc())
-
-# Webhook Handler (for Apify)
-st.markdown("---")
-st.header("Webhook Handler (Testing Only)")
-
-webhook_data = st.text_area("Paste webhook JSON payload here (testing only):", "", key="webhook_payload")
-
-if st.button("Process Webhook Payload"):
-    if webhook_data:
-        try:
-            with st.spinner("Processing webhook payload..."):
-                payload = json.loads(webhook_data)
-                process_dataset_directly(payload.get("resource", {}).get("defaultDatasetId", ""), 
-                                         st.session_state.last_brand, 
-                                         st.session_state.last_city)
-                st.success("✅ Webhook processed successfully!")
-        except Exception as e:
-            st.error(f"Error processing webhook: {str(e)}")
-
-# Footer
-st.markdown("---")
-st.caption("© 2025 Zecode - Competitor Mapper App")
+# Auto-refresh for task processing
+if st.session_state.auto_refresh:
+    # Only refresh every 30 seconds to avoid excessive processing
+    if time.time() - st.session_state.last_refresh > 30:
+        st.session_state.last_refresh = time.time()
+        process_all_tasks()
+        st.experimental_rerun()
