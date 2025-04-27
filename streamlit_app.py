@@ -1,7 +1,7 @@
-Traceback:
-File "/mount/src/zecompete-streamlit/streamlit_app.py", line 16, in <module>
-    from business_keywords_tab import render_business_keywords_tab
-# ------------------------------------------------------------------
+# --- make local modules importable ---------------------------------
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# -------------------------------------------------------------------
 
 import streamlit as st
 import pandas as pd
@@ -9,8 +9,9 @@ from pinecone import Pinecone
 from openai import OpenAI
 import time
 
+
 # Import the core components
-from business_keywords_tab import render_business_keywords_tab
+from business_keywords_tab import render_business_keywords_tab   
 from openai_assistant_reporting import render_assistant_report_tab
 from src.config import secret
 from src.scrape_maps import run_scrape, run_apify_task
