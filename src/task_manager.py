@@ -8,7 +8,6 @@ from typing import Dict, List, Optional
 import pandas as pd
 from src.scrape_maps import check_task_status, get_dataset_id_from_run, fetch_dataset_items
 from src.embed_upsert import upsert_places
-from src.run_pipeline import run
 
 # Directory to store task state
 TASK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "task_data")
@@ -143,18 +142,37 @@ def process_pending_tasks() -> int:
         
         # Process the data
         try:
-            # Option 1: Use the high-level run function that does everything
-            run(brand, city)
+            # Direct implementation without using run_pipeline
             
-            # Option 2: Just process the places directly
-            # df = pd.json_normalize(data)
-            # upsert_places(df, brand, city)
+            # 1. Convert data to DataFrame
+            df = pd.json_normalize(data)
+            print(f"Converted {len(data)} data points to DataFrame")
             
+            # 2. Clean DataFrame (similar to what run_pipeline would do)
+            # Keep essential columns
+            keep_cols = [c for c in df.columns if c in ["name", "title", "placeId", "totalScore", "reviewsCount", 
+                                                        "gpsCoordinates.lat", "gpsCoordinates.lng", 
+                                                        "address", "latitude", "longitude"]]
+            
+            if keep_cols:
+                df = df[keep_cols].drop_duplicates(subset=keep_cols[0], keep="first").reset_index(drop=True)
+            
+            # 3. Upsert places to Pinecone
+            print(f"Upserting {len(df)} places to Pinecone maps namespace")
+            upsert_places(df, brand, city)
+            
+            # 4. Generate keywords (this would happen in the Business Keywords tab)
+            # Not doing it here to avoid dependency on keyword_pipeline
+            
+            # Mark task as processed
             mark_task_processed(run_id)
             processed += 1
             print(f"Successfully processed task {run_id}")
+            
         except Exception as e:
             print(f"Error processing task {run_id}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             # Don't mark as processed so we can retry later
     
     return processed
