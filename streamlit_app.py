@@ -6,7 +6,7 @@ import plotly.express as px
 
 # Add imports for OpenAI Assistant integration
 try:
-    from src.openai_keyword_refiner import refine_keywords, batch_refine_keywords
+    from src.openai_keyword_refiner import refine_keywords, batch_refine_keywords, get_assistant_id
     from src.enhanced_keyword_pipeline import run_enhanced_keyword_pipeline, generate_enhanced_keywords_for_businesses
     openai_assistant_ok = True
 except Exception as e:
