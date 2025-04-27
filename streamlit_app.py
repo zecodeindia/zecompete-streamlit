@@ -121,3 +121,23 @@ if st.session_state.auto_refresh:
         st.session_state.last_refresh = time.time()
         process_all_tasks()
         st.experimental_rerun()
+    # ------------------------------------------------------------------
+    # Tab 3 – Combined data for the assistant
+    # ------------------------------------------------------------------
+    with tabs[3]:
+        st.subheader("Combined Data for OpenAI Assistant")
+
+        # Natural-language question
+        query = st.text_input(
+            "Ask a question about your keyword data",
+            key="bk_nl_query",
+            placeholder="e.g. Which location has the highest average search volume?"
+        )
+
+        if st.button("🤖 Ask Assistant", key="bk_ask_assistant") and query:
+            with st.spinner("Thinking..."):
+                try:
+                    answer = combine_data_for_assistant(query)
+                    st.write(answer)
+                except Exception as e:
+                    st.error(f"❌ Assistant error: {e}")
