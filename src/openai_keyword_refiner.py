@@ -74,10 +74,11 @@ def refine_keywords_openai(keywords: List[str], brand_names: List[str], city: st
 
 def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_names: List[str], city: str) -> List[str]:
     """
-    New smarter refinement that checks:
+    Smarter refinement:
     1. Business name first
-    2. Then address fallback
-    3. Then Google suggest
+    2. Address fallback
+    3. Google suggest fallback
+    4. Only call OpenAI if necessary
     """
     initial_keywords = []
 
@@ -86,20 +87,32 @@ def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_na
         address = entry.get("address", "").strip()
 
         if is_brand_location_pair(name):
-            initial_keywords.append(name)
+            cleaned_name = name.replace(",", "").replace("  ", " ").strip()
+            initial_keywords.append(cleaned_name)
         else:
             location_guess = extract_location_from_address(address)
             if location_guess:
                 brand = extract_brand_from_name(name, brand_names)
-                initial_keywords.append(f"{brand} {location_guess}")
+                initial_keywords.append(f"{brand} {location_guess}".strip())
             else:
                 brand = extract_brand_from_name(name, brand_names)
                 initial_keywords.extend(get_google_suggest_keywords(brand))
 
     logger.info(f"Initial keyword count after brand+location logic: {len(initial_keywords)}")
 
-    # Refine slightly using OpenAI if needed
-    return refine_keywords_openai(initial_keywords, brand_names, city)
+    # ✨ New Logic to Decide Refinement
+    needs_refinement = False
+    for keyword in initial_keywords:
+        if ("location" in keyword.lower()) or (len(keyword.strip().split()) < 2):
+            needs_refinement = True
+            break
+
+    if not needs_refinement:
+        logger.info("✅ Keywords look clean. Skipping OpenAI refinement.")
+        return initial_keywords
+    else:
+        logger.info("🔵 Keywords need refinement. Sending to OpenAI.")
+        return refine_keywords_openai(initial_keywords, brand_names, city)
 
 # === Helper to guess brand ===
 def extract_brand_from_name(name: str, brand_names: List[str]) -> str:
