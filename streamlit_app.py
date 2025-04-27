@@ -1,3 +1,11 @@
+# --- bootstrap local package path ---------------------------------
+import os, sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))     # /mount/src/zecompete-streamlit
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+# ------------------------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 from pinecone import Pinecone
