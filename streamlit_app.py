@@ -1,6 +1,12 @@
-# --- make local modules importable ---------------------------------
-import os, sys
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# --- TOP OF streamlit_app.py (just after the std-lib / pip imports) -----------
+import importlib
+import sys
+import os
+# make sure the repo root is on sys.path
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 # -------------------------------------------------------------------
 
 import streamlit as st
@@ -10,7 +16,13 @@ from openai import OpenAI
 import time
 
 # Import the core components
-from business_keywords_tab import render_business_keywords_tab   
+# --- resilient import ---------------------------------------------------------
+try:                             # old location (repo root)
+    business_keywords_tab = importlib.import_module("business_keywords_tab")
+except ModuleNotFoundError:      # new location (src/ sub-package)
+    business_keywords_tab = importlib.import_module("src.business_keywords_tab")
+
+render_business_keywords_tab = business_keywords_tab.render_business_keywords_tab
 from openai_assistant_reporting import render_assistant_report_tab
 from src.config import secret
 from src.scrape_maps import run_scrape, run_apify_task
