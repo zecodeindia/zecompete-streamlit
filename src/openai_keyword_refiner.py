@@ -1,7 +1,7 @@
-# src/openai_keyword_refiner.py
+# Modified src/openai_keyword_refiner.py
 """
 OpenAI Assistant integration for keyword refinement.
-This module provides functions to clean and refine keywords using the OpenAI Assistants API.
+This module provides functions to clean and refine keywords using a specific OpenAI Assistant.
 """
 
 import json
@@ -19,59 +19,34 @@ client = OpenAI(api_key=secret("OPENAI_API_KEY"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def create_assistant() -> str:
+# Fixed Assistant ID - use this specific Assistant instead of creating new ones
+FIXED_ASSISTANT_ID = "asst_aaWtxqys7xZZph6YQOSVP6Wk"
+
+def get_assistant_id() -> str:
     """
-    Create a new OpenAI Assistant for keyword refinement.
+    Return the fixed Assistant ID.
     
     Returns:
-        The ID of the created assistant
+        The ID of the Assistant to use
     """
-    try:
-        # Create the assistant with the specified instructions
-        assistant = client.beta.assistants.create(
-            name="Keyword Refiner",
-            instructions="""You are an expert in SEO and local search marketing.
-Your task is to clean and refine keyword suggestions related to local businesses.
-Given a list of raw keyword suggestions, you must:
-Focus ONLY on keywords that include a recognizable brand name and a location (like "Zecode Indiranagar", "Zecode RR Nagar", "Zecode Whitefield Bengaluru").
-If location is missing but can be inferred from context (e.g., nearby localities in the city), suggest the corrected form.
-Remove any keywords that focus on unrelated intents such as "timings", "open hours", "phone number", "contact", "review", "ratings", "directions", unless explicitly instructed otherwise.
-Ensure each final keyword is natural, realistic, and something a real user would type into Google when searching for a business outlet.
-Format the output as a clean JSON array, like:
-[
-  "Zecode Indiranagar",
-  "Zecode RR Nagar",
-  "Zecode Whitefield Bengaluru"
-]
-Do not explain or add extra text. Return only the JSON list.""",
-            model="gpt-4o-mini",
-            tools=[],
-        )
-        
-        logger.info(f"Created assistant with ID: {assistant.id}")
-        return assistant.id
-    
-    except Exception as e:
-        logger.error(f"Error creating assistant: {str(e)}")
-        raise
+    return FIXED_ASSISTANT_ID
 
-def refine_keywords(keywords: List[str], brand_names: List[str], city: str, assistant_id: str = None) -> List[str]:
+def refine_keywords(keywords: List[str], brand_names: List[str], city: str) -> List[str]:
     """
-    Refine keywords using the OpenAI Assistant.
+    Refine keywords using the fixed OpenAI Assistant.
     
     Args:
         keywords: List of raw keywords to refine
         brand_names: List of brand names for context
         city: City name for context
-        assistant_id: Optional assistant ID (will create one if not provided)
         
     Returns:
         List of refined keywords
     """
     try:
-        # Create assistant if not provided
-        if assistant_id is None:
-            assistant_id = create_assistant()
+        # Use the fixed assistant ID
+        assistant_id = FIXED_ASSISTANT_ID
+        logger.info(f"Using fixed Assistant ID: {assistant_id}")
             
         # Create a thread
         thread = client.beta.threads.create()
@@ -172,8 +147,8 @@ def batch_refine_keywords(keywords: List[str], brand_names: List[str], city: str
     progress_bar = st.progress(0) if 'st' in globals() else None
     status_text = st.empty() if 'st' in globals() else None
     
-    # Create assistant once to reuse across batches
-    assistant_id = create_assistant()
+    # Use the fixed Assistant ID for all batches
+    assistant_id = FIXED_ASSISTANT_ID
     
     refined_keywords = []
     total_batches = (len(keywords) // batch_size) + (1 if len(keywords) % batch_size > 0 else 0)
@@ -186,7 +161,7 @@ def batch_refine_keywords(keywords: List[str], brand_names: List[str], city: str
             status_text.write(f"Processing batch {batch_num}/{total_batches} ({len(batch)} keywords)")
         logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} keywords)")
         
-        batch_refined = refine_keywords(batch, brand_names, city, assistant_id)
+        batch_refined = refine_keywords(batch, brand_names, city)
         refined_keywords.extend(batch_refined)
         
         if progress_bar:
