@@ -467,6 +467,32 @@ with tabs[2]:
                 
                 if success:
                     st.success("✅ Keyword pipeline completed!")
+                    
+                    # Display generated keywords
+                    try:
+                        # Load the newly generated keywords from CSV
+                        if os.path.exists("keyword_volumes.csv"):
+                            kw_df = pd.read_csv("keyword_volumes.csv")
+                            
+                            # Display in a nice table
+                            st.subheader("Generated Keywords")
+                            st.dataframe(
+                                kw_df[["keyword", "search_volume", "competition", "cpc"]].sort_values(
+                                    by="search_volume", ascending=False
+                                ),
+                                use_container_width=True
+                            )
+                            
+                            # Option to download
+                            csv = kw_df.to_csv(index=False).encode("utf-8")
+                            st.download_button(
+                                label="⬇️ Download Keywords as CSV",
+                                data=csv,
+                                file_name="refined_keywords.csv",
+                                mime="text/csv"
+                            )
+                    except Exception as e:
+                        st.warning(f"Could not display keywords: {str(e)}")
                 else:
                     st.error("❌ Keyword pipeline failed")
             except Exception as e:
