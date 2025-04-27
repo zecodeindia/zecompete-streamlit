@@ -104,6 +104,7 @@ def smart_batch_refine_keywords(business_entries: List[Dict[str, str]], brand_na
     # Now keywords are clean, deduplicated
     return list(initial_keywords)
 
+
 # === Helper to guess brand ===
 def extract_brand_from_name(name: str, brand_names: List[str]) -> str:
     for brand in brand_names:
