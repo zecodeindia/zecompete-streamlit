@@ -1,8 +1,25 @@
 import os, itertools, pandas as pd, streamlit as st
 import time, json, threading, requests, secrets
-from openai import OpenAI
 import datetime
 import plotly.express as px
+from openai import OpenAI
+
+# Import the new components
+try:
+    from enhanced_keyword_pipeline import (
+        extract_business_names_from_pinecone,
+        preprocess_business_names,
+        get_search_volume_with_history,
+        run_business_keyword_pipeline,
+        combine_data_for_assistant
+    )
+    from openai_assistant_reporting import AssistantReporter
+    from business_keywords_tab import render_business_keywords_tab
+    enhanced_pipeline_imported = True
+except ImportError:
+    enhanced_pipeline_imported = False
+    import traceback
+    print("⚠️ Detailed import error:", traceback.format_exc())
 
 # Add imports for OpenAI Assistant integration
 try:
@@ -283,7 +300,9 @@ tabs = st.tabs([
     "Run Analysis", 
     "Auto Integration", 
     "Keywords & Search Volume", 
-    "Keyword Trends",  
+    "Keyword Trends",
+    "Business Keywords",  # New tab
+    "Advanced Reporting",  # New tab
     "Manual Upload", 
     "Ask Questions", 
     "Explore Data", 
@@ -546,6 +565,7 @@ with tabs[2]:
                                 # Option to use these refined keywords
                                 if st.button("Use These Refined Keywords"):
                                     with st.spinner("Getting search volumes and uploading to Pinecone..."):
+                                        from src.keyword_pipeline import get_search_volumes
                                         df = get_search_volumes(refined_keywords)
                                         
                                         if not df.empty:
@@ -578,10 +598,33 @@ with tabs[3]:
     # Call the function to display keyword trends
     display_keyword_trends()
 
-# ---------------------
-# Tab 5: Manual Upload
-# ---------------------
+# -----------------------------------
+# Tab 5: Business Keywords
+# -----------------------------------
 with tabs[4]:
+    if enhanced_pipeline_imported:
+        # Import and render the business keywords tab
+        render_business_keywords_tab()
+    else:
+        st.error("Business Keywords tab requires the enhanced_keyword_pipeline.py module.")
+        st.info("Please install the required modules to use this feature.")
+
+# -----------------------------------
+# Tab 6: Advanced Reporting
+# -----------------------------------
+with tabs[5]:
+    if enhanced_pipeline_imported:
+        # Import and render the assistant reporting tab
+        from openai_assistant_reporting import render_assistant_report_tab
+        render_assistant_report_tab()
+    else:
+        st.error("Advanced Reporting tab requires the openai_assistant_reporting.py module.")
+        st.info("Please install the required modules to use this feature.")
+
+# ---------------------
+# Tab 7: Manual Upload
+# ---------------------
+with tabs[6]:
     st.header("Manual Upload (CSV)")
 
     if st.button("🔄 Clear Previous Upload Data", key="clear_upload_tab"):
@@ -597,7 +640,7 @@ with tabs[4]:
         st.dataframe(df.head())
 
         brand = st.text_input("Brand Name", "Zecode")
-        city = st.text_input("City", "Bengaluru")
+        city = st.text_input("City Name", "Bengaluru")
 
         if st.button("Upload to Pinecone"):
             with st.spinner(f"Uploading data for {brand} in {city}..."):
@@ -605,26 +648,47 @@ with tabs[4]:
                 st.success("✅ Upload completed!")
 
 # ----------------------
-# Tab 6: Ask Questions
+# Tab 8: Ask Questions
 # ----------------------
-with tabs[5]:
+with tabs[7]:
     st.header("Ask Questions About Data")
 
     question = st.text_area("Your question")
-
-    if st.button("Get Answer"):
-        if question:
-            try:
-                answer = insight_question(question)
-                st.success("✅ Answer:")
-                st.write(answer)
-            except Exception as e:
-                st.error(f"Error answering question: {str(e)}")
+    
+    use_combined_data = st.checkbox("Use combined business and keyword data")
+    
+    if use_combined_data and enhanced_pipeline_imported:
+        if st.button("Get Combined Answer"):
+            if question:
+                try:
+                    # Get combined data
+                    combined_data = combine_data_for_assistant(question)
+                    
+                    # Initialize the reporter
+                    reporter = AssistantReporter()
+                    
+                    # Generate report
+                    with st.spinner("Generating comprehensive answer..."):
+                        answer = reporter.generate_report(combined_data, question)
+                        
+                        st.success("✅ Answer:")
+                        st.markdown(answer)
+                except Exception as e:
+                    st.error(f"Error answering question with combined data: {str(e)}")
+    else:
+        if st.button("Get Answer"):
+            if question:
+                try:
+                    answer = insight_question(question)
+                    st.success("✅ Answer:")
+                    st.write(answer)
+                except Exception as e:
+                    st.error(f"Error answering question: {str(e)}")
 
 # ------------------
-# Tab 7: Explore Stored Data
+# Tab 9: Explore Stored Data
 # ------------------
-with tabs[6]:
+with tabs[8]:
     st.header("Explore Stored Data")
 
     if st.button("🔄 Refresh Data View", key="refresh_explore"):
@@ -669,9 +733,9 @@ with tabs[6]:
             st.error(f"Error fetching Explore tab data: {e}")
 
 # ---------------------
-# Tab 8: Diagnostic
+# Tab 10: Diagnostic
 # ---------------------
-with tabs[7]:
+with tabs[9]:
     st.header("Diagnostic Info")
 
     if st.button("🔄 Clear All Data", key="clear_diagnostic"):
@@ -693,25 +757,33 @@ with tabs[7]:
     st.write(f"Scrape/Task Manager Module: {'✅' if scrape_module_ok else '❌'}")
     st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
     st.write(f"OpenAI Assistant Module: {'✅' if openai_assistant_ok else '❌'}")
-
-   # Add OpenAI Assistant test
-if openai_assistant_ok:
-    st.subheader("OpenAI Assistant Test")
-    if st.button("Test OpenAI Assistant Connection"):
-        try:
-            from src.openai_keyword_refiner import get_assistant_id
-            
-            with st.spinner("Testing OpenAI Assistant connection..."):
-                assistant_id = get_assistant_id()
+    
+    # Show status of new components
+    if enhanced_pipeline_imported:
+        st.write("Enhanced Keyword Pipeline: ✅")
+        st.write("OpenAI Assistant Reporting: ✅")
+    else:
+        st.write("Enhanced Keyword Pipeline: ❌")
+        st.write("OpenAI Assistant Reporting: ❌")
+        
+    # Add OpenAI Assistant test
+    if openai_assistant_ok:
+        st.subheader("OpenAI Assistant Test")
+        if st.button("Test OpenAI Assistant Connection"):
+            try:
+                from src.openai_keyword_refiner import get_assistant_id
                 
-                if assistant_id:
-                    st.success(f"✅ Successfully connected to OpenAI Assistant (ID: {assistant_id[:10]}...)")
-                else:
-                    st.error("❌ Failed to get OpenAI Assistant ID")
-        except Exception as e:
-            st.error(f"❌ Error testing OpenAI Assistant: {e}")
-            import traceback
-            st.code(traceback.format_exc())
+                with st.spinner("Testing OpenAI Assistant connection..."):
+                    assistant_id = get_assistant_id()
+                    
+                    if assistant_id:
+                        st.success(f"✅ Successfully connected to OpenAI Assistant (ID: {assistant_id[:10]}...)")
+                    else:
+                        st.error("❌ Failed to get OpenAI Assistant ID")
+            except Exception as e:
+                st.error(f"❌ Error testing OpenAI Assistant: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
 # Webhook Handler (for Apify)
 st.markdown("---")
@@ -734,3 +806,4 @@ if st.button("Process Webhook Payload"):
 # Footer
 st.markdown("---")
 st.caption("© 2025 Zecode - Competitor Mapper App")
+    st.write(f"
