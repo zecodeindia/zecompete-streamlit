@@ -36,10 +36,10 @@ def render_business_keywords_tab():
         st.subheader("Extract Business Names → Keywords → Search Volume")
         
         # Input city name for context
-        city = st.text_input("City for keyword context", "Bengaluru")
+        city = st.text_input("City for keyword context", "Bengaluru", key="bk_city_input")
         
         # Button to extract business names
-        if st.button("🔎 Extract Business Names from Pinecone"):
+        if st.button("🔎 Extract Business Names from Pinecone", key="extract_biz_names"):
             with st.spinner("Extracting business names from Pinecone..."):
                 try:
                     business_names = extract_business_names_from_pinecone()
@@ -59,7 +59,7 @@ def render_business_keywords_tab():
                     st.error(f"❌ Error extracting business names: {str(e)}")
         
         # Button to generate keywords from business names
-        if st.button("🔄 Generate Keywords from Business Names"):
+        if st.button("🔄 Generate Keywords from Business Names", key="gen_kw_from_biz"):
             if "business_names" not in st.session_state or not st.session_state.business_names:
                 st.warning("Please extract business names first.")
             else:
@@ -82,7 +82,7 @@ def render_business_keywords_tab():
                         st.error(f"❌ Error generating keywords: {str(e)}")
         
         # Button to get search volume for keywords
-        if st.button("📊 Get Search Volume Data"):
+        if st.button("📊 Get Search Volume Data", key="get_sv_data"):
             if "keywords" not in st.session_state or not st.session_state.keywords:
                 st.warning("Please generate keywords first.")
             else:
@@ -105,7 +105,8 @@ def render_business_keywords_tab():
                                 label="⬇️ Download Keyword Data as CSV",
                                 data=csv,
                                 file_name=f"keyword_volumes_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
-                                mime="text/csv"
+                                mime="text/csv",
+                                key="bk_download_csv"
                             )
                         else:
                             st.warning("⚠️ No search volume data retrieved.")
@@ -117,7 +118,7 @@ def render_business_keywords_tab():
         
         # Button to run the full pipeline
         st.subheader("Run Full Pipeline")
-        if st.button("🚀 Run Complete Business → Keywords Pipeline"):
+        if st.button("🚀 Run Complete Business → Keywords Pipeline", key="run_biz_kw_pipeline"):
             with st.spinner("Running full business to keywords pipeline..."):
                 try:
                     success = run_business_keyword_pipeline(city)
@@ -185,7 +186,8 @@ def render_business_keywords_tab():
             selected_keywords = st.multiselect(
                 "Select Keywords to Compare",
                 options=keywords,
-                default=keywords[:3] if len(keywords) >= 3 else keywords
+                default=keywords[:3] if len(keywords) >= 3 else keywords,
+                key="bk_selected_kw"  # Add a unique key here to avoid duplication
             )
             
             if selected_keywords:
@@ -236,7 +238,7 @@ def render_business_keywords_tab():
                             st.caption(f"CPC: ${cpc:.2f}")
                 
                 # Raw data viewer
-                if st.checkbox("Show Raw Data"):
+                if st.checkbox("Show Raw Data", key="bk_show_raw"):
                     st.dataframe(
                         filtered_df[["keyword", "date", "search_volume", "competition", "cpc"]].sort_values(
                             ["keyword", "date"]
@@ -252,9 +254,9 @@ def render_business_keywords_tab():
         st.subheader("Combined Data for OpenAI Assistant")
         
         # Input for natural language query
-        query = st.text_input("Enter a question to retrieve relevant data", "Which businesses have the highest search volume in Bengaluru?")
+        query = st.text_input("Enter a question to retrieve relevant data", "Which businesses have the highest search volume in Bengaluru?", key="bk_query")
         
-        if st.button("🔍 Retrieve Combined Data"):
+        if st.button("🔍 Retrieve Combined Data", key="bk_retrieve_combined"):
             with st.spinner("Querying both Pinecone namespaces and combining data..."):
                 try:
                     combined_data = combine_data_for_assistant(query)
@@ -287,7 +289,8 @@ def render_business_keywords_tab():
                             label="⬇️ Download Combined Data as JSON",
                             data=json_str.encode("utf-8"),
                             file_name=f"combined_data_{datetime.datetime.now().strftime('%Y%m%d')}.json",
-                            mime="application/json"
+                            mime="application/json",
+                            key="bk_download_json"
                         )
                         
                         # Show how to use this data with OpenAI Assistant
