@@ -1,6 +1,17 @@
 import os, itertools, pandas as pd, streamlit as st
 import time, json, threading, requests, secrets
 from openai import OpenAI
+import datetime
+import plotly.express as px
+
+# Add imports for OpenAI Assistant integration
+try:
+    from src.openai_keyword_refiner import refine_keywords, batch_refine_keywords
+    from src.enhanced_keyword_pipeline import run_enhanced_keyword_pipeline, generate_enhanced_keywords_for_businesses
+    openai_assistant_ok = True
+except Exception as e:
+    openai_assistant_ok = False
+    print(f"Error importing OpenAI Assistant modules: {str(e)}")
 
 # Set up the app
 st.set_page_config(page_title="Competitor Mapper", layout="wide")
@@ -49,6 +60,7 @@ try:
 except Exception as e:
     st.error(f"Error initializing Pinecone: {str(e)}")
     pinecone_success = False
+    
 # Import required modules with error handling
 import_success = True
 all_modules_ok = True
@@ -150,10 +162,6 @@ def get_webhook_secret():
         if "webhook_secret" not in st.session_state:
             st.session_state.webhook_secret = secrets.token_hex(16)
         return st.session_state.webhook_secret
-# Make sure you have these imports at the top of your file
-import os
-import datetime
-import plotly.express as px
 
 def display_keyword_trends():
     """Display keyword search volume trends"""
@@ -268,6 +276,7 @@ def display_keyword_trends():
         st.error(f"Error loading or processing trend data: {str(e)}")
         import traceback
         st.code(traceback.format_exc())
+
 # Tabs
 tabs = st.tabs([
     "Run Analysis", 
@@ -401,24 +410,17 @@ with tabs[1]:
                 st.success(f"✅ Processed dataset for {brand} in {city}")
             else:
                 st.error("❌ Failed to process dataset")
-# -----------------------------------
+
 # -----------------------------------
 # Tab 3: Keywords & Search Volume
 # -----------------------------------
- 
-# ------  ADD THESE IMPORTS AT THE TOP OF THE FILE ------
-# Add this in the import section
-from src.openai_keyword_refiner import refine_keywords, batch_refine_keywords
-from src.enhanced_keyword_pipeline import run_enhanced_keyword_pipeline, generate_enhanced_keywords_for_businesses
-
-# ------ UPDATES TO THE KEYWORDS & SEARCH VOLUME TAB ------
-"""
-Replace the existing content in the "Keywords & Search Volume" tab (Tab 3) with this code:
-"""
-
 with tabs[2]:
     st.header("Keywords & Search Volume Analysis")
 
+    # Check if OpenAI Assistant modules are available
+    if not openai_assistant_ok:
+        st.warning("⚠️ OpenAI Assistant modules not found. Advanced keyword refinement features are not available.")
+    
     # Clear previous keywords button
     if st.button("🔄 Clear Previous Keywords", key="clear_kw_tab"):
         with st.spinner("Clearing keyword data..."):
@@ -428,16 +430,18 @@ with tabs[2]:
     # Input city name for keyword context
     city = st.text_input("City for keywords", "Bengaluru")
     
-    # Add a toggle for AI-powered keyword refinement
-    use_ai_refinement = st.toggle("Use AI-powered keyword refinement", value=True)
-    
-    if use_ai_refinement:
-        st.info("""
-        🤖 **AI-powered keyword refinement** will:
-        - Focus only on brand name + location pairs
-        - Remove keywords with intents like "timings", "phone number", etc.
-        - Ensure keywords are natural and realistic
-        """)
+    # Add a toggle for AI-powered keyword refinement (only if modules are available)
+    use_ai_refinement = False
+    if openai_assistant_ok:
+        use_ai_refinement = st.toggle("Use AI-powered keyword refinement", value=True)
+        
+        if use_ai_refinement:
+            st.info("""
+            🤖 **AI-powered keyword refinement** will:
+            - Focus only on brand name + location pairs
+            - Remove keywords with intents like "timings", "phone number", etc.
+            - Ensure keywords are natural and realistic
+            """)
 
     # Check business names button
     if st.button("🔎 Check Business Names"):
@@ -456,7 +460,7 @@ with tabs[2]:
     if st.button("🚀 Generate Keywords & Get Search Volume"):
         with st.spinner(f"Running {'enhanced' if use_ai_refinement else 'standard'} keyword generation pipeline..."):
             try:
-                if use_ai_refinement:
+                if use_ai_refinement and openai_assistant_ok:
                     success = run_enhanced_keyword_pipeline(city)
                 else:
                     success = run_keyword_pipeline(city)
@@ -470,123 +474,83 @@ with tabs[2]:
                 import traceback
                 st.code(traceback.format_exc())
 
-# ------ ADD A NEW DIRECT KEYWORD REFINEMENT SECTION ------
-"""
-Add this new section to the "Keywords & Search Volume" tab after the current code:
-"""
+    # Add a new expander for direct keyword refinement (only if modules are available)
+    if openai_assistant_ok:
+        with st.expander("Direct Keyword Refinement Tool"):
+            st.subheader("Refine Existing Keywords")
+            
+            raw_keywords = st.text_area(
+                "Enter raw keywords (one per line):",
+                placeholder="ZARA Bengaluru timings\nH&M Indiranagar directions\nLevi's Majestic opening hours"
+            )
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                brand_input = st.text_input("Brand names (comma-separated):", "ZARA, H&M, Levi's")
+            
+            with col2:
+                refine_city = st.text_input("City for refinement:", city)
+            
+            if st.button("✨ Refine Keywords"):
+                if raw_keywords:
+                    keywords_list = [k.strip() for k in raw_keywords.split("\n") if k.strip()]
+                    brand_list = [b.strip() for b in brand_input.split(",") if b.strip()]
+                    
+                    with st.spinner("Refining keywords using AI..."):
+                        try:
+                            refined_keywords = refine_keywords(keywords_list, brand_list, refine_city)
+                            
+                            if refined_keywords:
+                                st.success(f"✅ Refined {len(keywords_list)} keywords to {len(refined_keywords)} keywords")
+                                
+                                # Display before and after
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.write("📝 Original Keywords:")
+                                    for kw in keywords_list:
+                                        st.write(f"- {kw}")
+                                
+                                with col2:
+                                    st.write("✨ Refined Keywords:")
+                                    for kw in refined_keywords:
+                                        st.write(f"- {kw}")
+                                
+                                # Option to use these refined keywords
+                                if st.button("Use These Refined Keywords"):
+                                    with st.spinner("Getting search volumes and uploading to Pinecone..."):
+                                        df = get_search_volumes(refined_keywords)
+                                        
+                                        if not df.empty:
+                                            # Add city to DataFrame
+                                            df = df.assign(city=refine_city)
+                                            
+                                            # Upsert to Pinecone
+                                            from src.embed_upsert import upsert_keywords
+                                            upsert_keywords(df, refine_city)
+                                            
+                                            # Also save to CSV
+                                            df.to_csv("keyword_volumes.csv", index=False)
+                                            
+                                            st.success("✅ Keywords processed and uploaded to Pinecone!")
+                                        else:
+                                            st.error("❌ Failed to get search volumes for refined keywords")
+                            else:
+                                st.warning("⚠️ Keyword refinement returned no results")
+                        except Exception as e:
+                            st.error(f"❌ Error during keyword refinement: {e}")
+                else:
+                    st.warning("Please enter some keywords to refine")
 
-    # Add a new expander for direct keyword refinement
-    with st.expander("Direct Keyword Refinement Tool"):
-        st.subheader("Refine Existing Keywords")
-        
-        raw_keywords = st.text_area(
-            "Enter raw keywords (one per line):",
-            placeholder="ZARA Bengaluru timings\nH&M Indiranagar directions\nLevi's Majestic opening hours"
-        )
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            brand_input = st.text_input("Brand names (comma-separated):", "ZARA, H&M, Levi's")
-        
-        with col2:
-            refine_city = st.text_input("City:", city)
-        
-        if st.button("✨ Refine Keywords"):
-            if raw_keywords:
-                keywords_list = [k.strip() for k in raw_keywords.split("\n") if k.strip()]
-                brand_list = [b.strip() for b in brand_input.split(",") if b.strip()]
-                
-                with st.spinner("Refining keywords using AI..."):
-                    try:
-                        refined_keywords = refine_keywords(keywords_list, brand_list, refine_city)
-                        
-                        if refined_keywords:
-                            st.success(f"✅ Refined {len(keywords_list)} keywords to {len(refined_keywords)} keywords")
-                            
-                            # Display before and after
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.write("📝 Original Keywords:")
-                                for kw in keywords_list:
-                                    st.write(f"- {kw}")
-                            
-                            with col2:
-                                st.write("✨ Refined Keywords:")
-                                for kw in refined_keywords:
-                                    st.write(f"- {kw}")
-                            
-                            # Option to use these refined keywords
-                            if st.button("Use These Refined Keywords"):
-                                with st.spinner("Getting search volumes and uploading to Pinecone..."):
-                                    df = get_search_volumes(refined_keywords)
-                                    
-                                    if not df.empty:
-                                        # Add city to DataFrame
-                                        df = df.assign(city=refine_city)
-                                        
-                                        # Upsert to Pinecone
-                                        from src.embed_upsert import upsert_keywords
-                                        upsert_keywords(df, refine_city)
-                                        
-                                        # Also save to CSV
-                                        df.to_csv("keyword_volumes.csv", index=False)
-                                        
-                                        st.success("✅ Keywords processed and uploaded to Pinecone!")
-                                    else:
-                                        st.error("❌ Failed to get search volumes for refined keywords")
-                        else:
-                            st.warning("⚠️ Keyword refinement returned no results")
-                    except Exception as e:
-                        st.error(f"❌ Error during keyword refinement: {e}")
-            else:
-                st.warning("Please enter some keywords to refine")
-# Make sure this is tab 3, corresponding to Keyword Trends
+# -----------------------------------
+# Tab 4: Keyword Trends
+# -----------------------------------
 with tabs[3]:
     st.subheader("Keyword Search Volume Trends")
     
-    # Check if trend data exists
-    trend_file_path = "keyword_volumes.csv"
-    if not os.path.exists(trend_file_path):
-        st.info("No trend data available. Please run the keyword pipeline first to generate trend data.")
-        if st.button("Generate Keywords with Trends"):
-            try:
-                from src.keyword_pipeline import run_keyword_pipeline
-                city = st.session_state.get("last_city", "Bengaluru")
-                with st.spinner(f"Generating keywords with trend data for {city}..."):
-                    success = run_keyword_pipeline(city)
-                    if success:
-                        st.success(f"✅ Generated keywords with trend data for {city}")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to generate keywords")
-            except Exception as e:
-                st.error(f"Error generating keywords: {str(e)}")
-    else:
-        # Load and display trend data
-        try:
-            df = pd.read_csv(trend_file_path)
-            st.write(f"Found trend data with {len(df)} rows")
-            
-            # Simple visualization using st.line_chart (no external dependencies)
-            st.subheader("Trend Visualization")
-            
-            # Create proper date column
-            df["date"] = pd.to_datetime(df[["year", "month"]].assign(day=1))
-            
-            # Pivot data for charting
-            keywords = df["keyword"].unique()
-            pivot_df = df.pivot(index="date", columns="keyword", values="search_volume")
-            
-            # Show the chart
-            st.line_chart(pivot_df)
-            
-            # Show raw data
-            if st.checkbox("Show raw data"):
-                st.dataframe(df)
-            
-        except Exception as e:
-            st.error(f"Error displaying trend data: {e}")
+    # Call the function to display keyword trends
+    display_keyword_trends()
+
 # ---------------------
 # Tab 5: Manual Upload
 # ---------------------
@@ -629,6 +593,7 @@ with tabs[5]:
                 st.write(answer)
             except Exception as e:
                 st.error(f"Error answering question: {str(e)}")
+
 # ------------------
 # Tab 7: Explore Stored Data
 # ------------------
@@ -676,8 +641,6 @@ with tabs[6]:
         except Exception as e:
             st.error(f"Error fetching Explore tab data: {e}")
 
-# ------------------
-
 # ---------------------
 # Tab 8: Diagnostic
 # ---------------------
@@ -702,28 +665,27 @@ with tabs[7]:
     st.write(f"Embed Module: {'✅' if embed_module_ok else '❌'}")
     st.write(f"Scrape/Task Manager Module: {'✅' if scrape_module_ok else '❌'}")
     st.write(f"Keyword Pipeline Module: {'✅' if keyword_module_ok else '❌'}")
-# ------ DIAGNOSTICS TAB UPDATES ------
-"""
-Add this section to the "Diagnostic" tab to test the OpenAI Assistant connection:
-"""
+    st.write(f"OpenAI Assistant Module: {'✅' if openai_assistant_ok else '❌'}")
 
     # Add OpenAI Assistant test
-    st.subheader("OpenAI Assistant Test")
-    if st.button("Test OpenAI Assistant Connection"):
-        try:
-            from src.openai_keyword_refiner import create_assistant
-            
-            with st.spinner("Testing OpenAI Assistant creation..."):
-                assistant_id = create_assistant()
+    if openai_assistant_ok:
+        st.subheader("OpenAI Assistant Test")
+        if st.button("Test OpenAI Assistant Connection"):
+            try:
+                from src.openai_keyword_refiner import create_assistant
                 
-                if assistant_id:
-                    st.success(f"✅ Successfully created OpenAI Assistant (ID: {assistant_id[:10]}...)")
-                else:
-                    st.error("❌ Failed to create OpenAI Assistant")
-        except Exception as e:
-            st.error(f"❌ Error testing OpenAI Assistant: {e}")
-            import traceback
-            st.code(traceback.format_exc())
+                with st.spinner("Testing OpenAI Assistant creation..."):
+                    assistant_id = create_assistant()
+                    
+                    if assistant_id:
+                        st.success(f"✅ Successfully created OpenAI Assistant (ID: {assistant_id[:10]}...)")
+                    else:
+                        st.error("❌ Failed to create OpenAI Assistant")
+            except Exception as e:
+                st.error(f"❌ Error testing OpenAI Assistant: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+
 # Webhook Handler (for Apify)
 st.markdown("---")
 st.header("Webhook Handler (Testing Only)")
